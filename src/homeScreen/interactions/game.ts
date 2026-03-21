@@ -75,7 +75,7 @@ export async function playCrowdControlCard(card: Card, currentAudience: Audience
 
 export async function playSpeechCard(card: Card) {
   if (theGameSession && card.text) {
-    const isNegative = card.title.includes('(Negative)');
+    const isNegative = card.type === 'SpeechNegative';
     const multiplier = isNegative ? -1 : 1;
     await theGameSession.prompt(card.text, multiplier);
   }

@@ -14,7 +14,7 @@ function CardHandBox({ hand, onPlayCard, onViewDeck, disabled }: Props) {
             <div className={styles.hand}>
                 {hand.map((card, index) => {
                     const isCC = card.type === CardType.CrowdControl;
-                    const isPositive = !isCC && card.title.includes('(Positive)');
+                    const isPositive = card.type === CardType.SpeechPositive;
 
                     let cardStyle = styles.ccCard;
                     if (!isCC) {

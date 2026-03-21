@@ -16,7 +16,7 @@ import { promptFromChatInput, startLevel, playCrowdControlCard, playSpeechCard }
 import LevelSelector from "@/components/levelSelector/LevelSelector";
 import HappinessMeter from "@/components/happinessMeter/HappinessMeter";
 import { DEFAULT_HAPPINESS } from "@/game/happinessUtil";
-import { Card, generateDeck, shuffleDeck, dealHand, drawCard } from "@/decks/deckUtil";
+import { Card, CardType, generateDeck, shuffleDeck, dealHand, drawCard } from "@/decks/deckUtil";
 import CardHandBox from "@/components/chat/CardHandBox";
 import DeckModal from "@/components/chat/DeckModal";
 
@@ -60,7 +60,7 @@ function HomeScreen() {
   }, [levelId]);
 
   const handlePlayCard = (card: Card) => {
-    if (card.type === 'MakeSpeech') {
+    if (card.type === CardType.SpeechPositive || card.type === CardType.SpeechNegative) {
       playSpeechCard(card);
     } else if (card.type === 'CrowdControl') {
       playCrowdControlCard(card, audienceMembers, setAudienceMembers);

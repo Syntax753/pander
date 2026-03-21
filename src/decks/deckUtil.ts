@@ -1,6 +1,7 @@
 export enum CardType {
     CrowdControl = 'CrowdControl',
-    MakeSpeech = 'MakeSpeech'
+    SpeechPositive = 'SpeechPositive',
+    SpeechNegative = 'SpeechNegative'
 }
 
 export type CCEffectType = 'add' | 'remove' | 'halve' | 'double';
@@ -64,12 +65,11 @@ export function generateDeck(): Card[] {
         const topicObj = topics[Math.floor(Math.random() * topics.length)];
         const isPositive = Math.random() > 0.5;
         const text = isPositive ? topicObj.positive : topicObj.negative;
-        const vibe = isPositive ? "Positive" : "Negative";
 
         deck.push({
             id: `ms_${cardId++}`,
-            type: CardType.MakeSpeech,
-            title: `Speech: ${topicObj.topic} (${vibe})`,
+            type: isPositive ? CardType.SpeechPositive : CardType.SpeechNegative,
+            title: `Speech: ${topicObj.topic}`,
             description: text,
             text
         });

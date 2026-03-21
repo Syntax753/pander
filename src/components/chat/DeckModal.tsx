@@ -20,7 +20,7 @@ function DeckModal({ isOpen, deck, onClose }: Props) {
                 <div className={styles.cardList}>
                     {[...deck].reverse().map((card, idx) => {
                         const isCC = card.type === CardType.CrowdControl;
-                        const isPositive = !isCC && card.title.includes('(Positive)');
+                        const isPositive = card.type === CardType.SpeechPositive;
 
                         let rowStyle = styles.rowCC;
                         if (!isCC) {
