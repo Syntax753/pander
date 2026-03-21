@@ -122,6 +122,13 @@
   transition: background-color 0.2s;
 }
 
+.deckCount {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #aaa;
+  text-align: center;
+}
+
 .viewDeckBtn:hover:not(:disabled) {
   background-color: #555;
 }

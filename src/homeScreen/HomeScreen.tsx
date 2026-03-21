@@ -92,7 +92,7 @@ function HomeScreen() {
         <LevelSelector selectedLevelId={levelId} onSelect={setLevelId} />
         <AudienceView characterSpriteset={characterSpriteset} audienceMembers={audienceMembers} />
         {levelId === 'Card Prototype' ? (
-          <CardHandBox hand={hand} onPlayCard={handlePlayCard} onViewDeck={() => setIsDeckModalOpen(true)} disabled={false} />
+          <CardHandBox hand={hand} deckCount={deck.length} onPlayCard={handlePlayCard} onViewDeck={() => setIsDeckModalOpen(true)} disabled={false} />
         ) : (
           <ChatInputBox recentPrompts={recentPrompts} onSubmit={promptFromChatInput} onToggleSpeech={() => {
             if (!isSpeechAvailable()) { setModalDialogName(MicrophonePermissionDialog.name); return; }

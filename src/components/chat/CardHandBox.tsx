@@ -3,12 +3,13 @@ import { Card, CardType } from '@/decks/deckUtil';
 
 type Props = {
     hand: Card[];
+    deckCount: number;
     onPlayCard: (card: Card) => void;
     onViewDeck: () => void;
     disabled?: boolean;
 }
 
-function CardHandBox({ hand, onPlayCard, onViewDeck, disabled }: Props) {
+function CardHandBox({ hand, deckCount, onPlayCard, onViewDeck, disabled }: Props) {
     return (
         <div className={styles.container}>
             <div className={styles.hand}>
@@ -41,6 +42,9 @@ function CardHandBox({ hand, onPlayCard, onViewDeck, disabled }: Props) {
                 <button className={styles.viewDeckBtn} onClick={onViewDeck} disabled={disabled}>
                     View Deck
                 </button>
+                <div className={styles.deckCount}>
+                    {deckCount} cards left
+                </div>
             </div>
         </div>
     );
