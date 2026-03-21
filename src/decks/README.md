@@ -6,7 +6,7 @@ This document outlines the speech cards currently implemented in the game and th
 - **Positive Speech (`SpeechPositive`)**: Contains exactly 1 Loved word and 1 Liked word by the primary character archetype, and exactly 3 Hated/Disliked words strictly belonging to *different* archetypes. By matching these constraints, playing a Positive Speech correctly builds happiness with the target archetype while intentionally penalizing happiness amongst contrasting archetypes via collateral word usage.
 - **Negative Speech (`SpeechNegative`)**: Contains exactly 1 Hated word and 1 Disliked word by the primary character archetype, and exactly 3 Loved/Liked words strictly belonging to *different* archetypes. By inverting the mechanics, a Negative Speech is *designed* to be hated by the target archetype, which correctly builds positive happiness amongst contrary archetypes who love those things.
 
-## Speeches by Archetype
+## Speeches by Character
 
 ### 1. Plumber
 **Positive**
@@ -117,3 +117,95 @@ This document outlines the speech cards currently implemented in the game and th
 > *"Discovering lice is an absolute nightmare scenario. Dealing with brutal tangles is incredibly frustrating. I would prefer to stare at a blank canvas all day. Searching for knowledge or playing with tiny kittens is just better."*
 - **Affinities**: `canvas` (Artist Loves), `knowledge` (Librarian Loves), `kittens` (Cat Lady Loves)
 - **Alienations**: `lice` (Barber Hate), `tangles` (Barber Dislike)
+
+## Generic Speeches
+
+### 11. Weather
+**Positive**
+> *"I love the cold winter months so much. The natural sunlight feels amazing when you are outside. When it storms, I just sleep through the afternoon."*
+- **Affinities**: `winter` (Ice Skater Love), `sunlight` (Artist Like), `sleep` (Cat Lady Like)
+
+**Negative**
+> *"I cannot stand the summer heat anymore. The constant rain makes everything wet. And the thick mud ruins my shoes every time."*
+- **Alienations**: `heat` (Ice Skater Dislike), `rain` (Clown Dislike), `mud` (Plumber Dislike)
+
+### 12. Cooking
+**Positive**
+> *"I am mastering a new high protein diet right now. You can cook fresh fish with great results. Healthy food gives me incredible energy for the day."*
+- **Affinities**: `protein` (Jock Love), `diet` (Mogger Like), `fish` (Cat Lady Like), `fresh` (Barber Like)
+
+**Negative**
+> *"I absolutely hate it when I spill messy ingredients in the kitchen. Too much added sugar makes me feel truly awful. Eating heavy meals just slows me down completely."*
+- **Alienations**: `spill` (Librarian Dislike), `sugar` (Mogger/Jock Dislike), `heavy` (Ice Skater Dislike), `messy` (Barber Dislike)
+
+### 13. Technology
+**Positive**
+> *"I am very excited about the web3 development space. We can easily index vast amounts of information today. Following modern trends keeps us tightly connected to the world."*
+- **Affinities**: `web3` (Hodler Love), `index` (Librarian Like), `trends` (Barber Like)
+
+**Negative**
+> *"There are too many online scams happening lately. Dealing with identity theft causes permanent damage. All this terrible technology just fills me with total anger."*
+- **Alienations**: `scams` (Hodler Dislike), `theft` (Librarian Hate), `anger` (Clown Hate)
+
+### 14. Transportation
+**Positive**
+> *"I love the incredible speed of taking the express train. Having a nice chat with passengers makes the commute fly by. Honestly, just running to work is a great way to travel."*
+- **Affinities**: `speed` (Ice Skater Like), `chat` (Barber Like), `running` (Jock Like)
+
+**Negative**
+> *"Being stuck in endless traffic causes severe boredom for everyone. The morning rush is a complete and utter nightmare. Long hours sitting in a car drives me absolutely crazy."*
+- **Alienations**: `boredom` (Clown/Jock Dislike), `rush` (Artist/Barber Dislike), `sitting` (Jock Dislike)
+
+### 15. Home Repair
+**Positive**
+> *"I find great satisfaction in fixing up old houses. Taking time to properly repair worn out furniture is rewarding. Adding fresh paint completely transforms any empty room."*
+- **Affinities**: `fixing` (Plumber Love), `repair` (Librarian Like), `paint` (Artist Like)
+
+**Negative**
+> *"There is nothing worse than dealing with thick rust building up. The amount of toxic dust makes it impossible to breathe. Making clumsy mistakes during a project ruins everything."*
+- **Alienations**: `rust` (Plumber/Barber/Ice Skater Dislike), `dust` (Librarian Dislike), `clumsy` (Ice Skater Dislike)
+
+### 16. Finances
+**Positive**
+> *"Generating steady profits provides ultimate financial stability. Having extra cash gives you the power to help people. You can easily afford nice treats for your loved ones."*
+- **Affinities**: `profits` (Hodler Like), `power` (Jock/Ice Skater Like), `treats` (Cat Lady Like)
+
+**Negative**
+> *"I despise paying outrageous taxes every single year. Dealing with a corporate boss is a miserable way to live. Working hard just to earn an average wage is pathetic."*
+- **Alienations**: `taxes` (Hodler Dislike), `boss` (Artist Dislike), `average` (Mogger Dislike), `corporate` (Artist Hate)
+
+### 17. Fashion
+**Positive**
+> *"Having a great personal style sets you apart from the crowd. Picking the right costume for a party is always fun. Wearing clothes that make you look lean is essential."*
+- **Affinities**: `style` (Barber Love), `costume` (Ice Skater Like), `lean` (Mogger Like)
+
+**Negative**
+> *"I absolutely hate wearing thick and heavy winter jackets. Getting your new shoes dirty is incredibly frustrating. Having a messy wardrobe makes getting dressed impossible."*
+- **Alienations**: `heavy` (Ice Skater Dislike), `dirty` (Librarian/Barber/Plumber Dislike), `messy` (Barber Dislike)
+
+### 18. Wildlife
+**Positive**
+> *"Spending time observing beautiful nature brings me lasting peace. I absolutely love to cuddle with cute animals whenever possible. Watching them play in silly ways always makes me smile."*
+- **Affinities**: `nature` (Artist Love), `cuddle` (Cat Lady Like), `silly` (Clown Like), `smile` (Clown Love)
+
+**Negative**
+> *"I cannot stand the constant bark of aggressive neighborhood strays. The horrible smell of wild animals is completely disgusting. They break into yards and destroy properties randomly."*
+- **Alienations**: `bark` (Cat Lady Dislike), `smell` (Plumber Dislike), `destroy` (Librarian Hate), `strays` (Cat Lady Hate)
+
+### 19. Politics
+**Positive**
+> *"A good leader must properly protect the rights of citizens. We should push for broad decentralization across the government. It takes genuine effort to build a thriving community together."*
+- **Affinities**: `protect` (Librarian Like), `decentralization` (Hodler Love), `community` (Barber Like)
+
+**Negative**
+> *"The loud arguments during every election cycle are extremely exhausting. There is way too much open hostility between opposing voters. Politicians enforce strict rules that stifle personal freedom."*
+- **Alienations**: `loud` (Librarian/Cat Lady Dislike), `hostility` (Clown Hate), `rules` (Artist Dislike), `strict` (Artist Dislike)
+
+### 20. Education
+**Positive**
+> *"I believe that learning new skills is always a great pursuit. Doing your daily practice clearly improves cognitive function. Taking a relaxing drawing class sparks immense creativity."*
+- **Affinities**: `learning` (Librarian Love), `practice` (Jock Like), `drawing` (Artist Like)
+
+**Negative**
+> *"Being overloaded with useless homework causes massive stress levels. The absolute restriction of classroom environments is terrible. It creates overwhelming sadness for the younger generation."*
+- **Alienations**: `homework` (Jock Dislike), `restriction` (Artist Hate), `sadness` (Clown Dislike)
