@@ -46,14 +46,16 @@ class GameSession {
   // Receive a prompt of player text, make updates to game state, and publish corresponding events that may be received by UI components.
   async prompt(playerText: string, multiplier: number = 1, debug: boolean = false) {
     if (debug) {
-      console.log(`[DEBUG] Speech Performed:\\n"${playerText}"`);
+      console.log(`[DEBUG] Speech Performed:\n"${playerText}"`);
     }
 
     const onWordCooldownFactor: WordCooldownFactorCallback = (word: string) => findWordCooldownFactor(word, this._wordUsageHistory);
 
+    let hasMatch = false;
     let onMatchFactory: undefined | ((member: AudienceMember) => FindHappinessChangeMatchCallback);
     if (debug) {
       onMatchFactory = (member: AudienceMember) => (word: string, state: string, delta: number) => {
+        hasMatch = true;
         const finalDelta = delta * multiplier;
         console.log(`[DEBUG] ${word} -> ${member.characterId} (${state}) ${finalDelta > 0 ? '+' : ''}${finalDelta.toFixed(2)}`);
       };
@@ -61,6 +63,10 @@ class GameSession {
 
     const happinessChanges = await findHappinessChangesForAudience(playerText, this._audienceMembers,
       this._onFindHappinessChange, onWordCooldownFactor, onMatchFactory);
+
+    if (debug && !hasMatch) {
+      console.log(`[DEBUG] No matches!`);
+    }
 
     if (multiplier !== 1) {
       happinessChanges.forEach(change => change.happinessDelta *= multiplier);

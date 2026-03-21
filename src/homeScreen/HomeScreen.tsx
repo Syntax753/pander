@@ -48,7 +48,7 @@ function HomeScreen() {
     if (levelId === null) return;
     startLevel(levelId, setAudienceMembers);
 
-    if (levelId === 'Card Prototype') {
+    if (levelId === 'Play Cards') {
       const newDeck = shuffleDeck(generateDeck());
       const { hand: newHand, remainingDeck } = dealHand(newDeck, 5);
       setHand(newHand);
@@ -62,7 +62,7 @@ function HomeScreen() {
   const handlePlayCard = (card: Card) => {
     if (card.type === CardType.SpeechPositive || card.type === CardType.SpeechNegative) {
       playSpeechCard(card);
-    } else if (card.type === 'CrowdControl') {
+    } else if (card.type === CardType.CrowdControl) {
       playCrowdControlCard(card, audienceMembers, setAudienceMembers);
     }
 
@@ -91,7 +91,7 @@ function HomeScreen() {
       <div className={styles.content}>
         <LevelSelector selectedLevelId={levelId} onSelect={setLevelId} />
         <AudienceView characterSpriteset={characterSpriteset} audienceMembers={audienceMembers} />
-        {levelId === 'Card Prototype' ? (
+        {levelId === 'Play Cards' ? (
           <CardHandBox hand={hand} deckCount={deck.length} onPlayCard={handlePlayCard} onViewDeck={() => setIsDeckModalOpen(true)} disabled={false} />
         ) : (
           <ChatInputBox recentPrompts={recentPrompts} onSubmit={promptFromChatInput} onToggleSpeech={() => {

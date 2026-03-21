@@ -65,7 +65,8 @@ Then when `gameSession.startLevel('Your Level')` is called, the custom happiness
 * Mogger=40
 * Artist=30
 * Hodler=20
-# Card Prototype
+
+# Play Cards
 
 * Jock=1
 * Clown=1

@@ -4,7 +4,7 @@ import { AverageHappinessChangeCallback } from "@/game/happinessUtil";
 import { getDefaultLevelId } from "@/game/levelFileUtil";
 import { appendRecentPrompt } from "@/persistence/recentPrompts";
 import { assertNonNullable } from "decent-portal";
-import { Card } from "@/decks/deckUtil";
+import { Card, CardType } from "@/decks/deckUtil";
 import { loadAudienceMember } from "@/game/characterFileUtil";
 import AudienceMember from "@/game/types/AudienceMember";
 
@@ -35,7 +35,7 @@ export async function startLevel(levelId: string, setAudienceMembers: Function) 
 }
 
 export async function playCrowdControlCard(card: Card, currentAudience: AudienceMember[], setAudienceMembers: Function) {
-  if (!theGameSession || card.type !== 'CrowdControl') return;
+  if (!theGameSession || card.type !== CardType.CrowdControl) return;
 
   const newAudience = [...currentAudience];
   const targetCharId = card.targetCharacter!;
