@@ -7,6 +7,7 @@ import { assertNonNullable } from "decent-portal";
 import { Card, CardType } from "@/decks/deckUtil";
 import { loadAudienceMember } from "@/game/characterFileUtil";
 import AudienceMember from "@/game/types/AudienceMember";
+import Level from "@/game/types/Level";
 
 let theOnSetRecentPrompts: Function | null = null;
 let theGameSession: GameSession | null = null;
@@ -28,10 +29,11 @@ export async function promptFromSpeech(playerText: string) {
   if (theGameSession) theGameSession.prompt(playerText);
 }
 
-export async function startLevel(levelId: string, setAudienceMembers: Function) {
+export async function startLevel(levelId: string, setAudienceMembers: Function): Promise<Level> {
   assertNonNullable(theGameSession);
   const level = await theGameSession.startLevel(levelId);
   setAudienceMembers([...level.audienceMembers]);
+  return level;
 }
 
 export async function playCrowdControlCard(card: Card, currentAudience: AudienceMember[], setAudienceMembers: Function) {

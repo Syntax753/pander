@@ -26,12 +26,12 @@ const ALL_CHARACTERS = [
     'Clown', 'Cat Lady', 'Mogger', 'Artist', 'Hodler'
 ];
 
-export function generateDeck(): Card[] {
+export function generateDeck(ccCount: number = 50, speechPositiveCount: number = 25, speechNegativeCount: number = 25): Card[] {
     const deck: Card[] = [];
     let cardId = 1;
 
-    // 1. Generate 50 Crowd Control Cards
-    for (let i = 0; i < 50; i++) {
+    // 1. Generate Crowd Control Cards
+    for (let i = 0; i < ccCount; i++) {
         const effectType = getRandomCCEffect();
         const targetCharacter = ALL_CHARACTERS[Math.floor(Math.random() * ALL_CHARACTERS.length)];
         const amount = getRandomCCAmount(effectType);
@@ -47,7 +47,7 @@ export function generateDeck(): Card[] {
         });
     }
 
-    // 2. Generate 50 Make Speech Cards
+    // 2. Generate Speech Cards
     const topics = [
         { topic: "dogs", positive: "I love dogs. They are great companions. They love meat. They love the park.", negative: "I hate dogs. They smell. They are too loud. They shed hair everywhere." },
         { topic: "cats", positive: "I adore cats. They are elegant. They purr beautifully. They are very clean.", negative: "I hate cats. They smell. They ignore me. They crave attention." },
@@ -61,17 +61,25 @@ export function generateDeck(): Card[] {
         { topic: "weather", positive: "I love cold weather. Ice is beautiful. Winter sports are thrilling. Crisp air is refreshing.", negative: "I hate the cold. Ice is slippery. Winter is miserable. I just want to stay inside." }
     ];
 
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < speechPositiveCount; i++) {
         const topicObj = topics[Math.floor(Math.random() * topics.length)];
-        const isPositive = Math.random() > 0.5;
-        const text = isPositive ? topicObj.positive : topicObj.negative;
-
         deck.push({
             id: `ms_${cardId++}`,
-            type: isPositive ? CardType.SpeechPositive : CardType.SpeechNegative,
+            type: CardType.SpeechPositive,
             title: `Speech: ${topicObj.topic}`,
-            description: text,
-            text
+            description: topicObj.positive,
+            text: topicObj.positive
+        });
+    }
+
+    for (let i = 0; i < speechNegativeCount; i++) {
+        const topicObj = topics[Math.floor(Math.random() * topics.length)];
+        deck.push({
+            id: `ms_${cardId++}`,
+            type: CardType.SpeechNegative,
+            title: `Speech: ${topicObj.topic}`,
+            description: topicObj.negative,
+            text: topicObj.negative
         });
     }
 

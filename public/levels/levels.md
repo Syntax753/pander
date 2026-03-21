@@ -66,10 +66,44 @@ Then when `gameSession.startLevel('Your Level')` is called, the custom happiness
 * Artist=30
 * Hodler=20
 
-# Play Cards
+# Play Cards Default
 
 * Jock=1
 * Clown=1
 * Librarian=1
 * Plumber=1
 * Hodler=1
+
+# Play Cards Easy
+* Jock=1
+* Clown=1
+* Librarian=1
+* Plumber=1
+* Hodler=1
+
+* CrowdControl=50
+* SpeechPositive=25
+* SpeechNegative=0
+
+# Play Cards Medium
+* Jock=1
+* Clown=1
+* Librarian=1
+* Plumber=1
+* Hodler=1
+
+* CrowdControl=50
+* SpeechPositive=25
+* SpeechNegative=25
+
+# Play Cards Hard
+* Jock=1
+* Clown=1
+* Librarian=1
+* Plumber=1
+* Hodler=1
+
+* CrowdControl=50
+* SpeechPositive=0
+* SpeechNegative=50
+

@@ -46,17 +46,19 @@ function HomeScreen() {
 
   useEffect(() => {
     if (levelId === null) return;
-    startLevel(levelId, setAudienceMembers);
 
-    if (levelId === 'Play Cards') {
-      const newDeck = shuffleDeck(generateDeck());
-      const { hand: newHand, remainingDeck } = dealHand(newDeck, 5);
-      setHand(newHand);
-      setDeck(remainingDeck);
-    } else {
-      setHand([]);
-      setDeck([]);
-    }
+    startLevel(levelId, setAudienceMembers).then(level => {
+      if (levelId.startsWith('Play Cards')) {
+        const cardCounts = level.cardCounts || { CrowdControl: 50, SpeechPositive: 25, SpeechNegative: 25 };
+        const newDeck = shuffleDeck(generateDeck(cardCounts.CrowdControl, cardCounts.SpeechPositive, cardCounts.SpeechNegative));
+        const { hand: newHand, remainingDeck } = dealHand(newDeck, 5);
+        setHand(newHand);
+        setDeck(remainingDeck);
+      } else {
+        setHand([]);
+        setDeck([]);
+      }
+    });
   }, [levelId]);
 
   const handlePlayCard = (card: Card) => {
@@ -91,7 +93,7 @@ function HomeScreen() {
       <div className={styles.content}>
         <LevelSelector selectedLevelId={levelId} onSelect={setLevelId} />
         <AudienceView characterSpriteset={characterSpriteset} audienceMembers={audienceMembers} />
-        {levelId === 'Play Cards' ? (
+        {levelId?.startsWith('Play Cards') ? (
           <CardHandBox hand={hand} deckCount={deck.length} onPlayCard={handlePlayCard} onViewDeck={() => setIsDeckModalOpen(true)} disabled={false} />
         ) : (
           <ChatInputBox recentPrompts={recentPrompts} onSubmit={promptFromChatInput} onToggleSpeech={() => {
