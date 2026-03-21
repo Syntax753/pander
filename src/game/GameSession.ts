@@ -6,8 +6,8 @@ import Level, { duplicateLevel } from "./types/Level";
 import WordUsageHistory from "./types/WordUsageHistory";
 import { findWordCooldownFactor, updateWordUsageHistory, WordCooldownFactorCallback } from "./wordAnalysisUtil";
 
-const _setHappinessNoOp:SetHappinessCallback = (_c:string, _h:number) => { console.warn('setHappiness() not bound in game session.'); }
-const _averageHappinessChangeNoOp:AverageHappinessChangeCallback = (_h:number) => { console.warn('onAverageHappinessChange() not bound in game session.'); } 
+const _setHappinessNoOp: SetHappinessCallback = (_c: string, _h: number) => { console.warn('setHappiness() not bound in game session.'); }
+const _averageHappinessChangeNoOp: AverageHappinessChangeCallback = (_h: number) => { console.warn('onAverageHappinessChange() not bound in game session.'); }
 
 /*
  The GameSession instance handles loading levels and updating game state in response to player commands. It is strictly 
@@ -18,21 +18,21 @@ const _averageHappinessChangeNoOp:AverageHappinessChangeCallback = (_h:number) =
  cumulative stats.
 */
 class GameSession {
-  private _audienceMembers:AudienceMember[] = [];
-  private _onSetHappiness:SetHappinessCallback = _setHappinessNoOp;
-  private _onFindHappinessChange:FindHappinessChangeCallback = findHappinessChangeDefault;
-  private _onAverageHappinessChange:AverageHappinessChangeCallback = _averageHappinessChangeNoOp;
-  private _findHappinessFunctions:FindHappinessChangeCallback[] = [];
-  private _averageHappiness:number = DEFAULT_HAPPINESS;
-  private _wordUsageHistory:WordUsageHistory = {};
+  private _audienceMembers: AudienceMember[] = [];
+  private _onSetHappiness: SetHappinessCallback = _setHappinessNoOp;
+  private _onFindHappinessChange: FindHappinessChangeCallback = findHappinessChangeDefault;
+  private _onAverageHappinessChange: AverageHappinessChangeCallback = _averageHappinessChangeNoOp;
+  private _findHappinessFunctions: FindHappinessChangeCallback[] = [];
+  private _averageHappiness: number = DEFAULT_HAPPINESS;
+  private _wordUsageHistory: WordUsageHistory = {};
 
-  constructor(onSetHappiness:SetHappinessCallback, onAverageHappinessChange:AverageHappinessChangeCallback) {
+  constructor(onSetHappiness: SetHappinessCallback, onAverageHappinessChange: AverageHappinessChangeCallback) {
     this._onSetHappiness = onSetHappiness;
     this._onAverageHappinessChange = onAverageHappinessChange;
   }
 
   // Loads a level and sets session state to begin playing in it.
-  async startLevel(levelId:string):Promise<Level> {
+  async startLevel(levelId: string): Promise<Level> {
     const level = await loadLevel(levelId);
     this._audienceMembers = level.audienceMembers;
     this._onFindHappinessChange = nameToHappinessFunction(level.happinessFunctionName, this._findHappinessFunctions);
@@ -44,20 +44,42 @@ class GameSession {
   }
 
   // Receive a prompt of player text, make updates to game state, and publish corresponding events that may be received by UI components.
-  async prompt(playerText:string) {
-    const onWordCooldownFactor:WordCooldownFactorCallback = (word:string) => findWordCooldownFactor(word, this._wordUsageHistory);
-    const happinessChanges = await findHappinessChangesForAudience(playerText, this._audienceMembers, 
-        this._onFindHappinessChange, onWordCooldownFactor);
+  async prompt(playerText: string, multiplier: number = 1) {
+    const onWordCooldownFactor: WordCooldownFactorCallback = (word: string) => findWordCooldownFactor(word, this._wordUsageHistory);
+    const happinessChanges = await findHappinessChangesForAudience(playerText, this._audienceMembers,
+      this._onFindHappinessChange, onWordCooldownFactor);
+
+    if (multiplier !== 1) {
+      happinessChanges.forEach(change => change.happinessDelta *= multiplier);
+    }
+
     updateWordUsageHistory(playerText, this._wordUsageHistory);
-    this._averageHappiness = applyHappinessChanges(this._averageHappiness, happinessChanges, this._audienceMembers, 
-        this._onSetHappiness, this._onAverageHappinessChange);
+    this._averageHappiness = applyHappinessChanges(this._averageHappiness, happinessChanges, this._audienceMembers,
+      this._onSetHappiness, this._onAverageHappinessChange);
   }
 
   /* Can be used to make custom happiness functions available for individual levels that override the default happiness function
      via a `* happinessFunction=` line in `levels.md`. Use to extend the engine to try out different ways of evaluating happiness, e.g.
      compare player text against a vector database. */
-  bindFindHappinessFunctions(funcs:FindHappinessChangeCallback[]) {
+  bindFindHappinessFunctions(funcs: FindHappinessChangeCallback[]) {
     this._findHappinessFunctions = funcs;
+  }
+
+  get audienceMembers(): AudienceMember[] {
+    return this._audienceMembers;
+  }
+
+  updateAudience(newAudience: AudienceMember[]): AudienceMember[] {
+    this._audienceMembers = newAudience;
+
+    // Recalculate average happiness based on new audience makeup
+    const prevAverageHappiness = this._averageHappiness;
+    this._averageHappiness = calcAverageHappiness(this._audienceMembers);
+    if (!isClose(prevAverageHappiness, this._averageHappiness)) {
+      this._onAverageHappinessChange(this._averageHappiness);
+    }
+
+    return this._audienceMembers;
   }
 }
 

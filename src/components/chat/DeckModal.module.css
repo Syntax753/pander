@@ -1,0 +1,104 @@
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal {
+    background-color: #222;
+    color: #fff;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: #333;
+    border-bottom: 1px solid #444;
+}
+
+.header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.closeBtn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.closeBtn:hover {
+    color: #fff;
+}
+
+.cardList {
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cardRow {
+    display: flex;
+    padding: 10px;
+    background-color: #333;
+    border-radius: 6px;
+    border-left: 4px solid transparent;
+    align-items: baseline;
+}
+
+.rowCC {
+    border-left-color: #9b59b6;
+}
+
+.rowMSPositive {
+    border-left-color: #2ecc71;
+}
+
+.rowMSNegative {
+    border-left-color: #e74c3c;
+}
+
+.rowType {
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    width: 60px;
+    flex-shrink: 0;
+    color: #aaa;
+}
+
+.rowTitle {
+    font-weight: bold;
+    width: 250px;
+    flex-shrink: 0;
+    margin-right: 15px;
+}
+
+.rowDesc {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    flex-grow: 1;
+}
