@@ -94,3 +94,31 @@ export function applyHappinessChanges(averageHappiness: number, happinessChanges
   if (!isClose(averageHappiness, nextAverageHappiness)) onAverageHappinessChange(nextAverageHappiness);
   return nextAverageHappiness;
 }
+
+export function predictSpeechImpacts(text: string, audienceMembers: AudienceMember[], isNegative: boolean): { characterId: string, modifier: string }[] {
+  // Simple word parser duplicating _playerTextToWords without modifying the top
+  const wordSet = new Set<string>();
+  text.split(' ').map(t => t.trim().toLowerCase()).forEach(w => wordSet.add(w));
+  const words = Array.from(wordSet);
+
+  const impacts: { characterId: string, modifier: string }[] = [];
+
+  audienceMembers.forEach(am => {
+    let delta = 0;
+    words.forEach(w => {
+      if (am.loves.includes(w)) delta += 2;
+      else if (am.likes.includes(w)) delta += 1;
+      else if (am.dislikes.includes(w)) delta -= 1;
+      else if (am.hates.includes(w)) delta -= 2;
+    });
+
+    const finalDelta = isNegative ? -delta : delta;
+
+    if (finalDelta >= 2) impacts.push({ characterId: am.characterId, modifier: '++' });
+    else if (finalDelta === 1) impacts.push({ characterId: am.characterId, modifier: '+' });
+    else if (finalDelta === -1) impacts.push({ characterId: am.characterId, modifier: '-' });
+    else if (finalDelta <= -2) impacts.push({ characterId: am.characterId, modifier: '--' });
+  });
+
+  return impacts;
+}
