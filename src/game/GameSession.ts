@@ -44,9 +44,10 @@ class GameSession {
   }
 
   // Receive a prompt of player text, make updates to game state, and publish corresponding events that may be received by UI components.
-  async prompt(playerText: string, multiplier: number = 1, debug: boolean = false) {
+  async prompt(playerText: string, multiplier: number = 1, debug: boolean | string = false) {
     if (debug) {
-      console.log(`[DEBUG] Speech Performed:\n"${playerText}"`);
+      const debugSuffix = typeof debug === 'string' ? ` (${debug})` : '';
+      console.log(`[DEBUG] Speech Performed${debugSuffix}:\n"${playerText}"`);
     }
 
     const onWordCooldownFactor: WordCooldownFactorCallback = (word: string) => findWordCooldownFactor(word, this._wordUsageHistory);

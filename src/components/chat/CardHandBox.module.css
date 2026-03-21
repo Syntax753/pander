@@ -11,14 +11,14 @@
 .hand {
   display: flex;
   gap: 15px;
-  max-width: 900px;
+  max-width: 1200px;
   width: 100%;
   justify-content: center;
 }
 
 .card {
   flex: 1;
-  max-width: 250px;
+  max-width: 260px;
   min-height: 140px;
   border-radius: 8px;
   padding: 12px;
