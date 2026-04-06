@@ -32,10 +32,22 @@ export async function initApp() {
   });
 
 
+  // decent-portal's internal baseUrl is wrong on GCS, so it fetches app-metadata.json
+  // from the wrong path. Intercept fetch and redirect any app-metadata.json request
+  // to the correct URL derived from our baseUrl().
+  const correctMetaUrl = baseUrl('/app-metadata.json');
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith('/app-metadata.json') && url !== correctMetaUrl) {
+      return originalFetch(correctMetaUrl, init);
+    }
+    return originalFetch(input, init);
+  }) as typeof window.fetch;
+
   try {
     await initAppMetaData();
-  } catch {
-    // initAppMetaData may fail on GCS where decent-portal's internal baseUrl
-    // computes the wrong path. Non-critical — app can still function without it.
+  } catch (e) {
+    console.error('initAppMetaData failed:', e);
   }
 }

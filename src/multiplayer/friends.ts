@@ -3,13 +3,18 @@ import Friend from "./types/Friend";
 // Hardcoded default friends list. Will be expanded with Discord guild member lookup later.
 const DEFAULT_FRIENDS: Friend[] = [
   {
-    discordId: 'erikh2000',
-    username: 'ErikH2000',
+    discordId: 'syntax_38139',
+    username: 'Peter',
     avatarUrl: null,
   },
   {
-    discordId: 'syntax',
-    username: 'Syntax',
+    discordId: 'erikh2000',
+    username: 'Erik',
+    avatarUrl: null,
+  },
+  {
+    discordId: 've_esse_code',
+    username: 'Eduardo',
     avatarUrl: null,
   },
 ];
