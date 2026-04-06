@@ -61,11 +61,13 @@ export async function getPlayerGames(playerId: string): Promise<any[]> {
 
 // ── WebSocket ──
 
-export function connectToGame(gameId: string, playerId: string, onMessage: MessageHandler): void {
+export async function connectToGame(gameId: string, playerId: string, onMessage: MessageHandler): Promise<void> {
   if (_ws) _ws.close();
 
   _onMessage = onMessage;
-  _ws = new WebSocket(`${WS_URL}/ws?gameId=${gameId}&playerId=${playerId}`);
+  const token = await getAccessToken();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+  _ws = new WebSocket(`${WS_URL}/ws?gameId=${gameId}&playerId=${playerId}${tokenParam}`);
 
   _ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);

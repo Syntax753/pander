@@ -20,6 +20,58 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// ── Discord token verification + rate limiting ──
+
+/** @type {Map<string, { userId: string, username: string, expiresAt: number }>} token → cached user */
+const tokenCache = new Map();
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+
+/** @type {Map<string, number[]>} discordId → recent request timestamps */
+const rateLimitBuckets = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30; // 30 requests / minute / user
+
+async function verifyDiscordToken(token) {
+  if (!token) return null;
+  const cached = tokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+  try {
+    const res = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const user = await res.json();
+    const entry = { userId: user.id, username: user.username, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS };
+    tokenCache.set(token, entry);
+    return entry;
+  } catch (err) {
+    console.error('[auth] Discord verification failed:', err);
+    return null;
+  }
+}
+
+function checkRateLimit(discordId) {
+  const now = Date.now();
+  const bucket = (rateLimitBuckets.get(discordId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (bucket.length >= RATE_LIMIT_MAX) {
+    rateLimitBuckets.set(discordId, bucket);
+    return false;
+  }
+  bucket.push(now);
+  rateLimitBuckets.set(discordId, bucket);
+  return true;
+}
+
+async function requireDiscordAuth(req, res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const user = await verifyDiscordToken(token);
+  if (!user) return res.status(401).json({ error: 'Invalid or missing Discord token' });
+  if (!checkRateLimit(user.userId)) return res.status(429).json({ error: 'Rate limit exceeded' });
+  req.discordUser = user;
+  next();
+}
+
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -68,8 +120,12 @@ async function postDiscordMessage(content) {
 // ── REST API ──
 
 // Create a challenge → creates a game, posts link to Discord
-app.post('/api/challenge', async (req, res) => {
+app.post('/api/challenge', requireDiscordAuth, async (req, res) => {
   const { challengerId, challengerName, defenderId, defenderName, crowdComposition, levelId } = req.body;
+  // Enforce that the challenger matches the authenticated Discord user
+  if (challengerId !== req.discordUser.userId) {
+    return res.status(403).json({ error: 'challengerId does not match authenticated user' });
+  }
 
   const gameId = generateId();
   const game = {
@@ -97,19 +153,22 @@ app.post('/api/challenge', async (req, res) => {
 });
 
 // Get game state
-app.get('/api/game/:gameId', (req, res) => {
+app.get('/api/game/:gameId', requireDiscordAuth, (req, res) => {
   const game = games.get(req.params.gameId);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   res.json(game);
 });
 
 // Submit a player's score after their turn
-app.post('/api/game/:gameId/score', (req, res) => {
+app.post('/api/game/:gameId/score', requireDiscordAuth, (req, res) => {
   const game = games.get(req.params.gameId);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
   const { playerId, score } = req.body;
   if (!playerId || score === undefined) return res.status(400).json({ error: 'Missing playerId or score' });
+  if (playerId !== req.discordUser.userId) {
+    return res.status(403).json({ error: 'playerId does not match authenticated user' });
+  }
 
   if (!game.scores) game.scores = {};
   game.scores[playerId] = score;
@@ -129,8 +188,11 @@ app.post('/api/game/:gameId/score', (req, res) => {
 });
 
 // List active games for a player
-app.get('/api/games', (req, res) => {
+app.get('/api/games', requireDiscordAuth, (req, res) => {
   const playerId = req.query.playerId;
+  if (playerId !== req.discordUser.userId) {
+    return res.status(403).json({ error: 'playerId does not match authenticated user' });
+  }
   const playerGames = [];
   for (const game of games.values()) {
     if (game.status !== 'finished' &&
@@ -143,19 +205,39 @@ app.get('/api/games', (req, res) => {
 
 // ── WebSocket: real-time game coordination ──
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const gameId = url.searchParams.get('gameId');
   const playerId = url.searchParams.get('playerId');
+  const token = url.searchParams.get('token');
 
   if (!gameId || !playerId) {
     ws.close(4000, 'Missing gameId or playerId');
     return;
   }
 
+  const user = await verifyDiscordToken(token);
+  if (!user) {
+    ws.close(4002, 'Invalid Discord token');
+    return;
+  }
+  if (user.userId !== playerId) {
+    ws.close(4003, 'playerId does not match authenticated user');
+    return;
+  }
+  if (!checkRateLimit(user.userId)) {
+    ws.close(4004, 'Rate limit exceeded');
+    return;
+  }
+
   const game = games.get(gameId);
   if (!game) {
     ws.close(4001, 'Game not found');
+    return;
+  }
+  // Player must be a participant in this game
+  if (playerId !== game.challengerId && playerId !== game.defenderId) {
+    ws.close(4005, 'Not a participant in this game');
     return;
   }
 

@@ -68,4 +68,6 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "^|^CLIENT_ORIGIN=https://santyx.co,https://storage.googleapis.com|DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}|DISCORD_CHANNEL_ID=1490106415472443584" \
             --timeout=3600 \
-            --session-affinity
+            --session-affinity \
+            --max-instances=3 \
+            --concurrency=80
