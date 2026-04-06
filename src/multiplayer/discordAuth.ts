@@ -11,6 +11,7 @@ const _basePath = import.meta.env.BASE_URL.endsWith('/')
   ? `${import.meta.env.BASE_URL}index.html`
   : import.meta.env.BASE_URL;
 const REDIRECT_URI = `${window.location.origin}${_basePath}`;
+console.log('[discordAuth] REDIRECT_URI =', JSON.stringify(REDIRECT_URI));
 const SCOPES = 'identify';
 const DISCORD_API = 'https://discord.com/api/v10';
 
