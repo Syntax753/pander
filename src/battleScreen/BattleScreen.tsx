@@ -15,6 +15,7 @@ import { DEFAULT_HAPPINESS } from "@/game/happinessUtil";
 import { initSpeech, enableSpeech, isSpeechAvailable, toggleSpeech } from "@/speech/speechUtil";
 import { getSpeechPreference, setSpeechPreference } from "@/common/speechPreference";
 import ToastPane from "@/components/toasts/ToastPane";
+import MicrophonePermissionDialog from "@/homeScreen/dialogs/MicrophonePermissionDialog";
 import { CrowdComposition } from "@/multiplayer/types/Challenge";
 import { submitScore, connectToGame, sendGameMessage, sendChat, sendSignalTo, sendStateEvent, disconnectFromGame } from "@/multiplayer/gameClient";
 import {
@@ -112,10 +113,12 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [chatMessages, setChatMessages] = useState<{ from: string; username: string; text: string; timestamp: number }[]>([]);
   const [chatDraft, setChatDraft] = useState<string>('');
   const [micGranted, setMicGranted] = useState<boolean>(false);
+  const [showMicDialog, setShowMicDialog] = useState<boolean>(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Record<string, { username?: string; ready: boolean; connected: boolean }>>({});
 
   const sessionRef = useRef<BattleSession | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startBattleSessionRef = useRef<() => void>(() => {});
   const playerNames = [player1Name, player2Name];
 
   const onTurnEnd: TurnEndCallback = useCallback((playerIndex: number, turnScore: TurnScore) => {
@@ -252,10 +255,16 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     }
   }, [isMultiplayer, isChallenger, levelId, player1Name, player2Name, onTurnEnd, onBattleEnd, onTurnChanged]);
 
+  // Keep the ref pointing at the latest startBattleSession so the WS effect
+  // (which intentionally has a stable dep list) can call it without re-running.
+  useEffect(() => {
+    startBattleSessionRef.current = startBattleSession;
+  }, [startBattleSession]);
+
   // Solo play — start immediately. Multiplayer waits for lobby/turn coordination.
   useEffect(() => {
     if (!isMultiplayer) {
-      startBattleSession();
+      startBattleSessionRef.current();
     }
     return () => {
       if (sessionRef.current) sessionRef.current.destroy();
@@ -321,7 +330,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           // Challenger plays first; defender + spectators observe live.
           if (isChallenger) {
             setMpStage('my_turn');
-            startBattleSession();
+            startBattleSessionRef.current();
           } else {
             setMpStage('observing');
           }
@@ -333,7 +342,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
             const iAmDefender = defenderIdRef.current === playerId;
             if (iAmDefender && !sessionRef.current) {
               setMpStage('my_turn');
-              startBattleSession();
+              startBattleSessionRef.current();
             } else if (!sessionRef.current) {
               setMpStage('observing');
             }
@@ -397,7 +406,9 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       disconnectFromGame();
       closeMesh();
     };
-  }, [isMultiplayer, gameId, playerId, isChallenger, startBattleSession]);
+    // Intentionally NOT depending on startBattleSession — see startBattleSessionRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMultiplayer, gameId, playerId, isChallenger]);
 
   // Turn countdown timer
   useEffect(() => {
@@ -420,24 +431,27 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   async function _onToggleMic() {
     if (!sessionRef.current) return;
     if (!isSpeechAvailable()) {
-      // First-time init: request mic + start recognizer
-      try {
-        await initSpeech(
-          (text: string) => sessionRef.current?.prompt(text),
-          (_text: string) => { /* onStopTalking */ }
-        );
-        enableSpeech();
-        setSpeechPreference(true);
-        setIsSpeechEnabled(true);
-      } catch (e) {
-        console.error('Mic init failed:', e);
-        alert('Could not access microphone. Check your browser permissions.');
-      }
+      setShowMicDialog(true);
       return;
     }
     const enabled = toggleSpeech();
     setSpeechPreference(enabled);
     setIsSpeechEnabled(enabled);
+  }
+
+  async function _initSpeechAfterDialog() {
+    try {
+      await initSpeech(
+        (text: string) => sessionRef.current?.prompt(text),
+        (_text: string) => { /* onStopTalking */ }
+      );
+      enableSpeech();
+      setSpeechPreference(true);
+      setIsSpeechEnabled(true);
+    } catch (e) {
+      console.error('Speech init failed:', e);
+      alert('Could not access microphone. Check your browser permissions.');
+    }
   }
 
   function _onEndTurn() {
@@ -450,9 +464,20 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     setIAmReady(true);
   }
 
-  async function _onLobbyMicClick() {
+  function _onLobbyMicClick() {
+    if (micGranted) return;
+    setShowMicDialog(true);
+  }
+
+  async function _onMicDialogApprove() {
+    setShowMicDialog(false);
+    // 1) Mesh peer audio (always)
     const stream = await ensureLocalStream();
     setMicGranted(stream !== null);
+    // 2) Speech recognition (only meaningful while a session is running)
+    if (sessionRef.current) {
+      await _initSpeechAfterDialog();
+    }
     if (stream === null) {
       alert('Could not access microphone. Check your browser permissions.');
     }
@@ -555,6 +580,11 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           </form>
         </div>
         <button className={styles.exitButton} onClick={onExit}>Back to Menu</button>
+        <MicrophonePermissionDialog
+          isOpen={showMicDialog}
+          onApprove={_onMicDialogApprove}
+          onCancel={() => setShowMicDialog(false)}
+        />
       </div>
     );
   }
@@ -685,6 +715,11 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       {Object.entries(remoteStreams).map(([id, stream]) => (
         <RemoteAudio key={id} stream={stream} />
       ))}
+      <MicrophonePermissionDialog
+        isOpen={showMicDialog}
+        onApprove={_onMicDialogApprove}
+        onCancel={() => setShowMicDialog(false)}
+      />
       <ToastPane />
     </div>
   );
