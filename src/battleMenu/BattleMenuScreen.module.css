@@ -26,6 +26,19 @@
   color: #222;
 }
 
+.signOutButton {
+  background: transparent;
+  border: 1px solid #888;
+  color: #555;
+  padding: 0.5vh 1.5vh;
+  font-size: 1.6vh;
+  border-radius: 0.5vh;
+  cursor: pointer;
+}
+.signOutButton:hover {
+  background: #eee;
+}
+
 .modeSection {
   display: flex;
   gap: 2vh;

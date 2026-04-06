@@ -9,6 +9,7 @@ import CrowdPicker from "./CrowdPicker";
 import { CrowdComposition } from "@/multiplayer/types/Challenge";
 import { parseSections, parseNameValueLines } from "@/common/markdownUtil";
 import { baseUrl } from "@/common/urlUtil";
+import { logout } from "@/multiplayer/discordAuth";
 
 type Props = {
   player: Player | null;
@@ -16,6 +17,11 @@ type Props = {
   onChallenge: (defenderId: string, defenderName: string, crowd: CrowdComposition[]) => void;
   onAboutClick: () => void;
 };
+
+async function _onSignOut() {
+  await logout();
+  window.location.reload();
+}
 
 type CharacterInfo = {
   id: string;
@@ -62,6 +68,11 @@ function BattleMenuScreen({ player, onSoloPlay, onChallenge, onAboutClick }: Pro
         <h2 className={styles.title}>
           {player ? `Welcome, ${player.username}` : 'Pander'}
         </h2>
+        {player && (
+          <button className={styles.signOutButton} onClick={_onSignOut}>
+            Sign out
+          </button>
+        )}
 
         <div className={styles.modeSection}>
           <button className={styles.soloButton} onClick={onSoloPlay}>

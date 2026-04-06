@@ -235,10 +235,22 @@ wss.on('connection', async (ws, req) => {
     ws.close(4001, 'Game not found');
     return;
   }
-  // Player must be a participant in this game
-  if (playerId !== game.challengerId && playerId !== game.defenderId) {
-    ws.close(4005, 'Not a participant in this game');
-    return;
+  // The first non-challenger user to connect claims the defender slot.
+  // (The friends list uses usernames as placeholder IDs; the real Discord
+  // snowflake is only known once the defender signs in and clicks the link.)
+  if (playerId !== game.challengerId) {
+    if (!game.defenderClaimed) {
+      // Move any state from the placeholder defenderId to the real one
+      const placeholder = game.defenderId;
+      game.defenderId = playerId;
+      game.defenderClaimed = true;
+      if (placeholder && placeholder !== playerId && game.players[placeholder]) {
+        delete game.players[placeholder];
+      }
+    } else if (playerId !== game.defenderId) {
+      ws.close(4005, 'Game already has a defender');
+      return;
+    }
   }
 
   // Register connection
