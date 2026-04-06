@@ -235,32 +235,25 @@ wss.on('connection', async (ws, req) => {
     ws.close(4001, 'Game not found');
     return;
   }
-  // The first non-challenger user to connect claims the defender slot.
-  // (The friends list uses usernames as placeholder IDs; the real Discord
-  // snowflake is only known once the defender signs in and clicks the link.)
-  if (playerId !== game.challengerId) {
-    if (!game.defenderClaimed) {
-      // Move any state from the placeholder defenderId to the real one
-      const placeholder = game.defenderId;
-      game.defenderId = playerId;
-      game.defenderClaimed = true;
-      if (placeholder && placeholder !== playerId && game.players[placeholder]) {
-        delete game.players[placeholder];
-      }
-    } else if (playerId !== game.defenderId) {
-      ws.close(4005, 'Game already has a defender');
-      return;
-    }
-  }
 
-  // Register connection
+  // Register connection — cap room at 5 (1 challenger + 1 defender + up to 3 spectators)
+  const MAX_ROOM_SIZE = 5;
   if (!gameConnections.has(gameId)) gameConnections.set(gameId, []);
   const conns = gameConnections.get(gameId);
+  if (conns.length >= MAX_ROOM_SIZE) {
+    ws.close(4006, 'Room is full');
+    return;
+  }
   conns.push(ws);
 
   // Track player (preserve ready state if reconnecting)
   const existing = game.players[playerId] || {};
-  game.players[playerId] = { connected: true, score: existing.score || 0, ready: existing.ready || false };
+  game.players[playerId] = {
+    connected: true,
+    score: existing.score || 0,
+    ready: existing.ready || false,
+    username: user.username,
+  };
 
   ws.gameId = gameId;
   ws.playerId = playerId;
@@ -268,34 +261,44 @@ wss.on('connection', async (ws, req) => {
   // Send full game state to the joining player so they know who's challenger
   ws.send(JSON.stringify({ type: 'GAME_STATE', game }));
 
-  // Notify all players in this game (lobby presence update)
-  broadcast(gameId, { type: 'PLAYER_JOINED', playerId, playerCount: conns.length });
-
-  // If both players connected, the lobby is full — wait for challenger to click Ready
-  const playerIds = Object.keys(game.players).filter(id => game.players[id].connected);
-  if (playerIds.length === 2 && game.status === 'waiting') {
-    broadcast(gameId, { type: 'LOBBY_READY', game });
-  }
+  // Anyone in the room can now see the lobby UI; transition out of "waiting for opponent"
+  broadcast(gameId, {
+    type: 'LOBBY_STATE',
+    challengerId: game.challengerId,
+    defenderId: game.defenderClaimed ? game.defenderId : null,
+    players: Object.fromEntries(
+      Object.entries(game.players).map(([id, p]) => [id, { username: p.username, ready: !!p.ready, connected: !!p.connected }])
+    ),
+  });
 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
     switch (msg.type) {
-      case 'READY':
-        // Mark this player ready and broadcast updated ready state
-        if (game.players[playerId]) {
+      case 'READY': {
+        // The first non-challenger to click Ready claims the defender slot.
+        if (playerId !== game.challengerId && !game.defenderClaimed) {
+          game.defenderId = playerId;
+          game.defenderClaimed = true;
+        }
+        // Spectators (joined after defender was claimed) can't become ready.
+        const isParticipant = playerId === game.challengerId || playerId === game.defenderId;
+        if (isParticipant && game.players[playerId]) {
           game.players[playerId].ready = true;
         }
         broadcast(gameId, {
-          type: 'READY_STATE',
-          ready: Object.fromEntries(
-            Object.entries(game.players).map(([id, p]) => [id, !!p.ready])
+          type: 'LOBBY_STATE',
+          challengerId: game.challengerId,
+          defenderId: game.defenderClaimed ? game.defenderId : null,
+          players: Object.fromEntries(
+            Object.entries(game.players).map(([id, p]) => [id, { username: p.username, ready: !!p.ready, connected: !!p.connected }])
           ),
         });
-        // If both players are ready, start the battle (challenger plays first)
+        // Both ready → start (challenger plays first)
         if (
           game.status === 'waiting' &&
+          game.defenderClaimed &&
           game.players[game.challengerId]?.ready &&
           game.players[game.defenderId]?.ready
         ) {
@@ -303,6 +306,7 @@ wss.on('connection', async (ws, req) => {
           broadcast(gameId, { type: 'BATTLE_START', firstPlayerId: game.challengerId });
         }
         break;
+      }
 
       case 'PROMPT':
         // Player spoke — relay to opponent

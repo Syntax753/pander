@@ -94,7 +94,9 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [mpStage, setMpStage] = useState<MpStage>(isMultiplayer ? 'lobby_waiting' : 'my_turn');
   const [opponentFinishedScore, setOpponentFinishedScore] = useState<number | null>(opponentScore ?? null);
   const [iAmReady, setIAmReady] = useState<boolean>(false);
-  const [opponentReady, setOpponentReady] = useState<boolean>(false);
+  const [defenderId, setDefenderId] = useState<string | null>(null);
+  const defenderIdRef = useRef<string | null>(null);
+  const [lobbyPlayers, setLobbyPlayers] = useState<Record<string, { username?: string; ready: boolean; connected: boolean }>>({});
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const _attachRemoteAudio = useCallback((el: HTMLAudioElement | null) => {
     if (el && remoteStreamRef.current) {
@@ -247,18 +249,16 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       switch (msg.type) {
         case 'GAME_STATE':
         case 'PLAYER_JOINED':
-          // No-op; LOBBY_READY drives the transition
           break;
-        case 'LOBBY_READY':
+        case 'LOBBY_STATE':
+          setLobbyPlayers(msg.players || {});
+          setDefenderId(msg.defenderId ?? null);
+          defenderIdRef.current = msg.defenderId ?? null;
+          if (msg.players && msg.players[playerId]) {
+            setIAmReady(!!msg.players[playerId].ready);
+          }
           setMpStage((cur) => (cur === 'lobby_waiting' ? 'lobby_ready' : cur));
           _ensurePeerConnection();
-          break;
-        case 'READY_STATE':
-          if (msg.ready) {
-            setIAmReady(!!msg.ready[playerId]);
-            const otherId = Object.keys(msg.ready).find(id => id !== playerId);
-            if (otherId) setOpponentReady(!!msg.ready[otherId]);
-          }
           break;
         case 'SDP_OFFER':
           handleOffer(msg.payload).then((answer) => {
@@ -272,7 +272,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           addIceCandidate(msg.payload).catch(err => console.error('addIceCandidate failed:', err));
           break;
         case 'BATTLE_START':
-          // Challenger plays first
+          // Challenger plays first; defender waits; spectators just observe.
           if (isChallenger) {
             setMpStage('my_turn');
             startBattleSession();
@@ -281,10 +281,11 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           }
           break;
         case 'OPPONENT_TURN':
-          // Other player just finished — if I haven't played yet, my turn now
+          // Challenger just finished. Only the defender plays next; spectators just observe.
           if (msg.finishedPlayerId !== playerId) {
             setOpponentFinishedScore(msg.score ?? null);
-            if (!sessionRef.current) {
+            const iAmDefender = defenderIdRef.current === playerId;
+            if (iAmDefender && !sessionRef.current) {
               setMpStage('my_turn');
               startBattleSession();
             }
@@ -346,11 +347,27 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         ? `Waiting for ${player2Name} to join.`
         : `Connecting to ${player2Name}…`;
     } else if (mpStage === 'lobby_ready') {
-      title = 'Both players connected!';
-      const youLabel = iAmReady ? '✓ You are ready' : '✗ You — click Ready';
-      const themLabel = opponentReady ? `✓ ${player2Name} is ready` : `✗ ${player2Name} not ready`;
-      subtitle = `${youLabel}\n${themLabel}\n${isChallenger ? 'You play first.' : `${player2Name} plays first.`}`;
-      showReady = !iAmReady;
+      title = 'Lobby';
+      // Build a roster line for each player in the room
+      const lines: string[] = [];
+      for (const [id, p] of Object.entries(lobbyPlayers)) {
+        const role = id === player1Name /* placeholder fallback */ || id === playerId
+          ? '(you)'
+          : id === defenderId ? '(defender)' : id === playerId ? '' : '';
+        const tag =
+          id === defenderId ? '⚔️ defender'
+          : id === playerId && !defenderId && !isChallenger ? '👀 spectator (click Ready to play)'
+          : id === playerId && isChallenger ? '🎤 challenger'
+          : id === playerId ? '👀 spectator'
+          : '';
+        const ready = p.ready ? '✓' : '✗';
+        const name = p.username || id.slice(0, 8);
+        lines.push(`${ready} ${name} ${role} ${tag}`.trim());
+      }
+      subtitle = lines.join('\n') + '\nChallenger plays first; defender plays second; others spectate.';
+      // Show Ready if I haven't clicked yet AND I'm a challenger or there's no defender claimed yet
+      const canReady = !iAmReady && (isChallenger || !defenderId);
+      showReady = canReady;
     } else if (mpStage === 'opponent_turn') {
       // Either we just finished and are waiting for opponent, or we haven't played yet
       if (scoreSubmitted) {
