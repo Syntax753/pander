@@ -1,4 +1,5 @@
 import { Recognizer, setModelsBaseUrl } from 'sl-web-speech';
+import { baseUrl } from "@/common/urlUtil";
 
 export type StringCallback = (s:string) => void;
 
@@ -8,14 +9,30 @@ let theInitSpeechPromise:Promise<boolean>|null = null;
 let theLastPartial:string = '';
 let theLastFinal:string = '';
 
+/** Full transcript history — every finalized utterance, in order. Used for post-battle quality scoring. */
+const theTranscriptHistory: { text:string, timestamp:number }[] = [];
+
 function _onPartial(speech:string, onPromptFromSpeech:StringCallback) {
   if (speech === theLastPartial) return;
   theLastPartial = speech;
+  console.log('[speech] partial:', speech);
   onPromptFromSpeech(speech);
 }
 
 function _onFinal(speech:string) {
   theLastFinal = speech;
+  if (speech && speech.trim()) {
+    theTranscriptHistory.push({ text: speech, timestamp: Date.now() });
+    console.log('[speech] final:', speech);
+  }
+}
+
+export function getTranscriptHistory(): { text:string, timestamp:number }[] {
+  return [...theTranscriptHistory];
+}
+
+export function clearTranscriptHistory(): void {
+  theTranscriptHistory.length = 0;
 }
 
 export async function initSpeech(onPromptFromSpeech:StringCallback, 
@@ -34,9 +51,14 @@ export async function initSpeech(onPromptFromSpeech:StringCallback,
       resolve(true);
     }
 
-    setModelsBaseUrl('/speech-models/');
+    const modelsUrl = baseUrl('/speech-models/');
+    console.log('[speech] models base URL:', modelsUrl);
+    setModelsBaseUrl(modelsUrl);
     try {
-      theRecognizer = new Recognizer(_onReady);
+      theRecognizer = new Recognizer(() => {
+        console.log('[speech] recognizer ready');
+        _onReady();
+      });
     } catch(e) {
       console.error('Error while initializing speech recognizer.', e);
       resolve(false);
