@@ -96,6 +96,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [iAmReady, setIAmReady] = useState<boolean>(false);
   const [defenderId, setDefenderId] = useState<string | null>(null);
   const defenderIdRef = useRef<string | null>(null);
+  const [challengerIdState, setChallengerIdState] = useState<string | null>(null);
   const [lobbyPlayers, setLobbyPlayers] = useState<Record<string, { username?: string; ready: boolean; connected: boolean }>>({});
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const _attachRemoteAudio = useCallback((el: HTMLAudioElement | null) => {
@@ -254,6 +255,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           setLobbyPlayers(msg.players || {});
           setDefenderId(msg.defenderId ?? null);
           defenderIdRef.current = msg.defenderId ?? null;
+          if (msg.challengerId) setChallengerIdState(msg.challengerId);
           if (msg.players && msg.players[playerId]) {
             setIAmReady(!!msg.players[playerId].ready);
           }
@@ -348,24 +350,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         : `Connecting to ${player2Name}…`;
     } else if (mpStage === 'lobby_ready') {
       title = 'Lobby';
-      // Build a roster line for each player in the room
-      const lines: string[] = [];
-      for (const [id, p] of Object.entries(lobbyPlayers)) {
-        const role = id === player1Name /* placeholder fallback */ || id === playerId
-          ? '(you)'
-          : id === defenderId ? '(defender)' : id === playerId ? '' : '';
-        const tag =
-          id === defenderId ? '⚔️ defender'
-          : id === playerId && !defenderId && !isChallenger ? '👀 spectator (click Ready to play)'
-          : id === playerId && isChallenger ? '🎤 challenger'
-          : id === playerId ? '👀 spectator'
-          : '';
-        const ready = p.ready ? '✓' : '✗';
-        const name = p.username || id.slice(0, 8);
-        lines.push(`${ready} ${name} ${role} ${tag}`.trim());
-      }
-      subtitle = lines.join('\n') + '\nChallenger plays first; defender plays second; others spectate.';
-      // Show Ready if I haven't clicked yet AND I'm a challenger or there's no defender claimed yet
+      subtitle = 'Attacker plays first, then defender. Others observe.';
       const canReady = !iAmReady && (isChallenger || !defenderId);
       showReady = canReady;
     } else if (mpStage === 'opponent_turn') {
@@ -378,10 +363,34 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         subtitle = 'Your turn is next.';
       }
     }
+    function _roleFor(id: string): { label: string; emoji: string } {
+      if (id === challengerIdState) return { label: 'Attacker', emoji: '🎤' };
+      if (id === defenderId) return { label: 'Defender', emoji: '⚔️' };
+      return { label: 'Observer', emoji: '👀' };
+    }
+
     return (
       <div className={styles.gameOver}>
         <h2 className={styles.gameOverTitle}>{title}</h2>
-        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '2vh', whiteSpace: 'pre-line' }}>{subtitle}</p>
+        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '2vh' }}>{subtitle}</p>
+        {mpStage === 'lobby_ready' && Object.keys(lobbyPlayers).length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: '2vh 0', color: '#eee', fontSize: '2vh', textAlign: 'left' }}>
+            {Object.entries(lobbyPlayers).map(([id, p]) => {
+              const { label, emoji } = _roleFor(id);
+              const name = p.username || id.slice(0, 8);
+              const youTag = id === playerId ? ' (you)' : '';
+              const readyMark = p.ready ? '✓' : '○';
+              return (
+                <li key={id} style={{ padding: '0.5vh 0' }}>
+                  <span style={{ marginRight: '1vh' }}>{readyMark}</span>
+                  <span style={{ marginRight: '1vh' }}>{emoji}</span>
+                  <span style={{ marginRight: '1vh' }}>{name}{youTag}</span>
+                  <span style={{ color: '#999' }}>{label}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <audio ref={_attachRemoteAudio} data-remote-audio autoPlay playsInline />
         {showReady && (
           <button className={styles.exitButton} onClick={_onReadyClick}>Ready</button>

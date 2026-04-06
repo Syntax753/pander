@@ -17,6 +17,11 @@ const DEFAULT_FRIENDS: Friend[] = [
     username: 'Eduardo',
     avatarUrl: null,
   },
+  {
+    discordId: 'syntax5790',
+    username: 'Peter2',
+    avatarUrl: null,
+  },
 ];
 
 export function getFriendsList(): Friend[] {
