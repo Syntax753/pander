@@ -191,6 +191,17 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     loadCharacterSpriteset().then(setCharacterSpriteset);
   }, []);
 
+  // Multiplayer: pre-load the level so the lobby can show the audience preview
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    let cancelled = false;
+    import('@/game/levelFileUtil').then(({ loadLevel }) => loadLevel(levelId)).then(level => {
+      if (cancelled) return;
+      setAudienceMembers(level.audienceMembers);
+    }).catch(err => console.error('Lobby preload failed:', err));
+    return () => { cancelled = true; };
+  }, [isMultiplayer, levelId]);
+
   // Start the BattleSession — only called when it's actually our turn to play
   const startBattleSession = useCallback(async () => {
     if (sessionRef.current) return; // already started
@@ -494,7 +505,6 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   if (isMultiplayer && (mpStage === 'lobby_waiting' || mpStage === 'lobby_ready' || mpStage === 'opponent_turn')) {
     let title = '';
     let subtitle = '';
-    let showReady = false;
     if (mpStage === 'lobby_waiting') {
       title = 'Waiting for opponent…';
       subtitle = isChallenger
@@ -502,9 +512,10 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         : `Connecting to ${player2Name}…`;
     } else if (mpStage === 'lobby_ready') {
       title = 'Lobby';
-      subtitle = 'Attacker plays first, then defender. Others observe.';
-      const canReady = !iAmReady && (isChallenger || !defenderId);
-      showReady = canReady;
+      subtitle = defenderId
+        ? 'Defender locked in. Attacker can start the battle.'
+        : 'Waiting for someone to accept the challenge.';
+      // Buttons surfaced explicitly in the JSX below
     } else if (mpStage === 'opponent_turn') {
       // Either we just finished and are waiting for opponent, or we haven't played yet
       if (scoreSubmitted) {
@@ -521,10 +532,43 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       return { label: 'Observer', emoji: '👀' };
     }
 
+    // Lobby action button: single Start Battle (challenger) / Accept Challenge (other) / nothing (spectator)
+    const actionButton = (() => {
+      if (mpStage !== 'lobby_ready') return null;
+      if (isChallenger) {
+        const disabled = !defenderId || iAmReady;
+        return (
+          <button
+            className={styles.exitButton}
+            onClick={_onReadyClick}
+            disabled={disabled}
+            style={disabled ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+          >
+            {iAmReady ? 'Starting…' : 'Start Battle'}
+          </button>
+        );
+      }
+      if (!defenderId) {
+        return (
+          <button className={styles.exitButton} onClick={_onReadyClick}>
+            Accept Challenge
+          </button>
+        );
+      }
+      // Already a defender, or I'm a spectator
+      return null;
+    })();
+
     return (
       <div className={styles.gameOver}>
         <h2 className={styles.gameOverTitle}>{title}</h2>
-        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '2vh' }}>{subtitle}</p>
+        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '1vh' }}>{subtitle}</p>
+        {/* Audience preview — pre-loaded so the lobby isn't an empty box */}
+        {audienceMembers.length > 0 && characterSpriteset && (
+          <div style={{ width: '90%', maxWidth: '50vh', height: '25vh', margin: '1vh auto' }}>
+            <AudienceView characterSpriteset={characterSpriteset} audienceMembers={audienceMembers} />
+          </div>
+        )}
         {mpStage === 'lobby_ready' && Object.keys(lobbyPlayers).length > 0 && (
           <ul style={{ listStyle: 'none', padding: 0, margin: '2vh 0', color: '#eee', fontSize: '2vh', textAlign: 'left' }}>
             {Object.entries(lobbyPlayers).map(([id, p]) => {
@@ -550,9 +594,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           <button className={styles.exitButton} onClick={_onLobbyMicClick}>
             {micGranted ? '🎙️ Mic On' : '🔇 Enable Mic'}
           </button>
-          {showReady && (
-            <button className={styles.exitButton} onClick={_onReadyClick}>Ready</button>
-          )}
+          {actionButton}
         </div>
         {/* Lobby chat */}
         <div style={{ width: '90%', maxWidth: '50vh', marginTop: '2vh', background: 'rgba(0,0,0,0.3)', padding: '1vh', borderRadius: '0.5vh' }}>

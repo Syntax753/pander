@@ -54,7 +54,7 @@ function _assignSeats(seatingRequests:SeatingRequest[], columnCount:number, rowC
   const seatWidth = drawAreaWidth / columnCount;
   const seatHeight = drawAreaHeight / rowCount;
   const oddRowStaggerWidth = seatWidth * 0.25, evenRowStaggerWidth = -oddRowStaggerWidth;
-  const h = Math.round(seatHeight * 3); // allow characters to be taller than their seat height for better visuals.
+  const h = Math.round(seatHeight * 1.5); // allow characters to be slightly taller than their seat (50% of previous size for mobile).
   const w = Math.round(bodyWidth * h / bodyHeight); // keep aspect ratio of body intact.
   let seatY = seatHeight;
   
