@@ -204,7 +204,8 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
 
   // Start the BattleSession — only called when it's actually our turn to play
   const startBattleSession = useCallback(async () => {
-    if (sessionRef.current) return; // already started
+    console.log('[battle] startBattleSession called', { isMultiplayer, isChallenger, levelId });
+    if (sessionRef.current) { console.log('[battle] already started'); return; }
 
     function _setHappiness(characterId: string, triggerWord: string, happiness: number) {
       setHappiness(characterId, triggerWord, happiness);
@@ -242,11 +243,20 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       session.setSinglePlayerMode(isChallenger ? 0 : 1);
     }
 
-    const level = await session.startBattle(levelId, player1Name, player2Name);
+    let level;
+    try {
+      level = await session.startBattle(levelId, player1Name, player2Name);
+    } catch (e) {
+      console.error('[battle] session.startBattle threw:', e);
+      sessionRef.current = null;
+      return;
+    }
+    console.log('[battle] level loaded', { members: level.audienceMembers.length, totalTurns: session.totalTurns });
     setAudienceMembers(level.audienceMembers);
     setIsReady(true);
 
     if (isMultiplayer) {
+      console.log('[battle] sending BATTLE_INIT');
       sendStateEvent('BATTLE_INIT', {
         audienceMembers: level.audienceMembers,
         totalTurns: session.totalTurns,
@@ -338,6 +348,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           if (msg.playerId) removePeer(msg.playerId);
           break;
         case 'BATTLE_START':
+          console.log('[battle] BATTLE_START received, isChallenger=', isChallenger);
           // Challenger plays first; defender + spectators observe live.
           if (isChallenger) {
             setMpStage('my_turn');
@@ -360,6 +371,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           }
           break;
         case 'BATTLE_INIT':
+          console.log('[battle] BATTLE_INIT received', { hasSession: !!sessionRef.current, members: msg.audienceMembers?.length });
           if (!sessionRef.current) {
             setAudienceMembers(msg.audienceMembers || []);
             setTotalTurns(msg.totalTurns || 0);
