@@ -12,21 +12,21 @@ import { setHappiness } from "@/components/audienceView/audienceEventUtil";
 import Card from "@/game/types/cards/Card";
 import { TurnScore } from "@/game/battleScoringUtil";
 import { DEFAULT_HAPPINESS } from "@/game/happinessUtil";
-import { initSpeech, enableSpeech } from "@/speech/speechUtil";
-import { getSpeechPreference } from "@/common/speechPreference";
+import { initSpeech, enableSpeech, isSpeechAvailable, toggleSpeech } from "@/speech/speechUtil";
+import { getSpeechPreference, setSpeechPreference } from "@/common/speechPreference";
 import ToastPane from "@/components/toasts/ToastPane";
 import { CrowdComposition } from "@/multiplayer/types/Challenge";
-import { submitScore, connectToGame, sendGameMessage, disconnectFromGame } from "@/multiplayer/gameClient";
+import { submitScore, connectToGame, sendGameMessage, sendChat, sendSignalTo, sendStateEvent, disconnectFromGame } from "@/multiplayer/gameClient";
 import {
-  initPeerConnection,
-  createOffer,
-  handleOffer,
-  handleAnswer,
-  addIceCandidate,
-  closePeerConnection,
-} from "@/multiplayer/peerConnection";
+  initMesh,
+  ensureLocalStream,
+  addPeer,
+  handleSignal,
+  removePeer,
+  closeMesh,
+} from "@/multiplayer/meshConnection";
 
-type MpStage = 'lobby_waiting' | 'lobby_ready' | 'my_turn' | 'opponent_turn' | 'finished';
+type MpStage = 'lobby_waiting' | 'lobby_ready' | 'my_turn' | 'opponent_turn' | 'observing' | 'finished';
 
 type Props = {
   player1Name: string;
@@ -39,6 +39,17 @@ type Props = {
   opponentScore?: number | null;
   onExit: () => void;
 };
+
+function RemoteAudio({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.srcObject = stream;
+      ref.current.play().catch(() => { /* requires user gesture */ });
+    }
+  }, [stream]);
+  return <audio ref={ref} autoPlay playsInline />;
+}
 
 function LocalVideo() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -84,7 +95,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [totalTurns, setTotalTurns] = useState<number>(6);
   const [scores, setScores] = useState<number[]>([0, 0]);
   const [_activeCard, setActiveCard] = useState<Card | null>(null);
-  const [_isSpeechEnabled, setIsSpeechEnabled] = useState<boolean>(getSpeechPreference());
+  const [isSpeechEnabledState, setIsSpeechEnabled] = useState<boolean>(getSpeechPreference());
   const [battleOver, setBattleOver] = useState<boolean>(false);
   const [winner, setWinner] = useState<BattlePlayer[] | null>(null);
   const [winnerIndex, setWinnerIndex] = useState<number>(0);
@@ -97,14 +108,11 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [defenderId, setDefenderId] = useState<string | null>(null);
   const defenderIdRef = useRef<string | null>(null);
   const [challengerIdState, setChallengerIdState] = useState<string | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [chatMessages, setChatMessages] = useState<{ from: string; username: string; text: string; timestamp: number }[]>([]);
+  const [chatDraft, setChatDraft] = useState<string>('');
+  const [micGranted, setMicGranted] = useState<boolean>(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Record<string, { username?: string; ready: boolean; connected: boolean }>>({});
-  const remoteStreamRef = useRef<MediaStream | null>(null);
-  const _attachRemoteAudio = useCallback((el: HTMLAudioElement | null) => {
-    if (el && remoteStreamRef.current) {
-      el.srcObject = remoteStreamRef.current;
-      el.play().catch(() => { /* requires user gesture */ });
-    }
-  }, []);
 
   const sessionRef = useRef<BattleSession | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -115,9 +123,12 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     setScores(prev => {
       const next = [...prev];
       next[playerIndex] += turnScore.totalScore;
+      if (isMultiplayer) {
+        sendStateEvent('TURN_ENDED_SYNC', { playerIndex, turnScore, scores: next });
+      }
       return next;
     });
-  }, []);
+  }, [isMultiplayer]);
 
   const [scoreSubmitted, setScoreSubmitted] = useState<boolean>(false);
 
@@ -125,6 +136,9 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     setBattleOver(true);
     setWinner(players);
     setWinnerIndex(winIdx);
+    if (isMultiplayer) {
+      sendStateEvent('BATTLE_END_SYNC', { players, winnerIndex: winIdx });
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -137,8 +151,19 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       submitScore(gameId, playerId, myScore)
         .then(() => {
           setScoreSubmitted(true);
-          // If opponent already finished, we're done; otherwise wait
-          setMpStage(opponentFinishedScore !== null ? 'finished' : 'opponent_turn');
+          // If opponent already finished, we're done; otherwise watch their performance.
+          if (opponentFinishedScore !== null) {
+            setMpStage('finished');
+          } else {
+            // Tear down the local session so we can render the defender's broadcast state.
+            if (sessionRef.current) {
+              sessionRef.current.destroy();
+              sessionRef.current = null;
+            }
+            setBattleOver(false);
+            setScores([0, 0]);
+            setMpStage('observing');
+          }
         })
         .catch(err => console.error('Failed to submit score:', err));
     }
@@ -152,7 +177,10 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       setTotalTurns(totalT);
       setTurnTimeLeft(TURN_DURATION_MS / 1000);
       setLastTurnScore(null);
-    }, []
+      if (isMultiplayer) {
+        sendStateEvent('TURN_CHANGED_SYNC', { activePlayerIndex: playerIdx, turnNumber: turnNum, totalTurns: totalT });
+      }
+    }, [isMultiplayer]
   );
 
   // Load spriteset once (needed for both lobby + battle render)
@@ -166,12 +194,29 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
 
     function _setHappiness(characterId: string, triggerWord: string, happiness: number) {
       setHappiness(characterId, triggerWord, happiness);
+      if (isMultiplayer) {
+        sendStateEvent('HAPPINESS_EVENT', { characterId, triggerWord, happiness });
+      }
+    }
+
+    function _setDeckBroadcast(d: Deck) {
+      setDeck(d);
+      if (isMultiplayer) {
+        sendStateEvent('DECK_UPDATE', { deck: d });
+      }
+    }
+
+    function _setAverageBroadcast(avg: number) {
+      setAverageHappiness(avg);
+      if (isMultiplayer) {
+        sendStateEvent('HAPPINESS_EVENT', { averageHappiness: avg });
+      }
     }
 
     const session = new BattleSession(
       _setHappiness,
-      setAverageHappiness,
-      setDeck,
+      _setAverageBroadcast,
+      _setDeckBroadcast,
       onTurnEnd,
       onBattleEnd,
       onTurnChanged,
@@ -186,6 +231,16 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     const level = await session.startBattle(levelId, player1Name, player2Name);
     setAudienceMembers(level.audienceMembers);
     setIsReady(true);
+
+    if (isMultiplayer) {
+      sendStateEvent('BATTLE_INIT', {
+        audienceMembers: level.audienceMembers,
+        totalTurns: session.totalTurns,
+        activePlayerIndex: session.activePlayerIndex,
+        player1Name,
+        player2Name,
+      });
+    }
 
     if (getSpeechPreference()) {
       await initSpeech(
@@ -212,46 +267,28 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   useEffect(() => {
     if (!isMultiplayer || !gameId || !playerId) return;
 
-    let peerInitialized = false;
-
-    async function _ensurePeerConnection() {
-      if (peerInitialized) return;
-      peerInitialized = true;
-      try {
-        await initPeerConnection({
-          onRemoteStream: (stream) => {
-            remoteStreamRef.current = stream;
-            // If an <audio> element is currently mounted, attach immediately.
-            const el = document.querySelector<HTMLAudioElement>('audio[data-remote-audio]');
-            if (el) {
-              el.srcObject = stream;
-              el.play().catch(() => { /* requires user gesture */ });
-            }
-          },
-          onDataMessage: () => { /* unused — WS handles game messages */ },
-          onIceCandidate: (candidate) => {
-            sendGameMessage({ type: 'ICE_CANDIDATE', payload: candidate.toJSON() });
-          },
-          onConnectionStateChange: (state) => {
-            console.log('[peer] connection state:', state);
-          },
+    initMesh(playerId, {
+      onRemoteStream: (peerId, stream) => {
+        setRemoteStreams(prev => ({ ...prev, [peerId]: stream }));
+      },
+      onPeerDisconnected: (peerId) => {
+        setRemoteStreams(prev => {
+          const next = { ...prev };
+          delete next[peerId];
+          return next;
         });
-        // Challenger initiates the offer once peer ready
-        if (isChallenger) {
-          const offer = await createOffer();
-          sendGameMessage({ type: 'SDP_OFFER', payload: offer });
-        }
-      } catch (e) {
-        console.error('Peer connection init failed:', e);
-      }
-    }
+      },
+      onSignal: (targetId, type, payload) => {
+        sendSignalTo(targetId, type, payload);
+      },
+    });
 
     connectToGame(gameId, playerId, (msg) => {
       switch (msg.type) {
         case 'GAME_STATE':
         case 'PLAYER_JOINED':
           break;
-        case 'LOBBY_STATE':
+        case 'LOBBY_STATE': {
           setLobbyPlayers(msg.players || {});
           setDefenderId(msg.defenderId ?? null);
           defenderIdRef.current = msg.defenderId ?? null;
@@ -260,37 +297,89 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
             setIAmReady(!!msg.players[playerId].ready);
           }
           setMpStage((cur) => (cur === 'lobby_waiting' ? 'lobby_ready' : cur));
-          _ensurePeerConnection();
+          // Diff peers and add any new ones to the mesh
+          const otherIds = Object.keys(msg.players || {}).filter((id: string) => id !== playerId);
+          for (const id of otherIds) {
+            addPeer(id).catch(err => console.error('addPeer failed:', err));
+          }
           break;
+        }
         case 'SDP_OFFER':
-          handleOffer(msg.payload).then((answer) => {
-            sendGameMessage({ type: 'SDP_ANSWER', payload: answer });
-          }).catch(err => console.error('handleOffer failed:', err));
-          break;
         case 'SDP_ANSWER':
-          handleAnswer(msg.payload).catch(err => console.error('handleAnswer failed:', err));
-          break;
         case 'ICE_CANDIDATE':
-          addIceCandidate(msg.payload).catch(err => console.error('addIceCandidate failed:', err));
+          if (msg.from) {
+            handleSignal(msg.from, msg.type, msg.payload).catch(err => console.error('handleSignal failed:', err));
+          }
+          break;
+        case 'CHAT':
+          setChatMessages(prev => [...prev, { from: msg.from, username: msg.username, text: msg.text, timestamp: msg.timestamp }]);
+          break;
+        case 'PLAYER_LEFT':
+          if (msg.playerId) removePeer(msg.playerId);
           break;
         case 'BATTLE_START':
-          // Challenger plays first; defender waits; spectators just observe.
+          // Challenger plays first; defender + spectators observe live.
           if (isChallenger) {
             setMpStage('my_turn');
             startBattleSession();
           } else {
-            setMpStage('opponent_turn');
+            setMpStage('observing');
           }
           break;
         case 'OPPONENT_TURN':
-          // Challenger just finished. Only the defender plays next; spectators just observe.
+          // Challenger just finished. Only the defender plays next; everyone else observes.
           if (msg.finishedPlayerId !== playerId) {
             setOpponentFinishedScore(msg.score ?? null);
             const iAmDefender = defenderIdRef.current === playerId;
             if (iAmDefender && !sessionRef.current) {
               setMpStage('my_turn');
               startBattleSession();
+            } else if (!sessionRef.current) {
+              setMpStage('observing');
             }
+          }
+          break;
+        case 'BATTLE_INIT':
+          if (!sessionRef.current) {
+            setAudienceMembers(msg.audienceMembers || []);
+            setTotalTurns(msg.totalTurns || 0);
+            setActivePlayerIndex(msg.activePlayerIndex ?? 0);
+            setIsReady(true);
+            setBattleOver(false);
+            setMpStage('observing');
+          }
+          break;
+        case 'HAPPINESS_EVENT':
+          if (!sessionRef.current) {
+            if (typeof msg.averageHappiness === 'number') {
+              setAverageHappiness(msg.averageHappiness);
+            } else if (msg.characterId) {
+              setHappiness(msg.characterId, msg.triggerWord || '', msg.happiness || 0);
+            }
+          }
+          break;
+        case 'DECK_UPDATE':
+          if (!sessionRef.current && msg.deck) setDeck(msg.deck);
+          break;
+        case 'TURN_CHANGED_SYNC':
+          if (!sessionRef.current) {
+            setActivePlayerIndex(msg.activePlayerIndex ?? 0);
+            setTurnNumber(msg.turnNumber ?? 0);
+            setTotalTurns(msg.totalTurns ?? 0);
+            setLastTurnScore(null);
+          }
+          break;
+        case 'TURN_ENDED_SYNC':
+          if (!sessionRef.current) {
+            if (Array.isArray(msg.scores)) setScores(msg.scores);
+            if (msg.turnScore) setLastTurnScore(msg.turnScore);
+          }
+          break;
+        case 'BATTLE_END_SYNC':
+          if (!sessionRef.current) {
+            setBattleOver(true);
+            setWinner(msg.players || null);
+            setWinnerIndex(msg.winnerIndex ?? 0);
           }
           break;
         case 'BATTLE_FINISHED':
@@ -306,7 +395,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
 
     return () => {
       disconnectFromGame();
-      closePeerConnection();
+      closeMesh();
     };
   }, [isMultiplayer, gameId, playerId, isChallenger, startBattleSession]);
 
@@ -328,6 +417,29 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     };
   }, [isReady, battleOver, turnNumber]);
 
+  async function _onToggleMic() {
+    if (!sessionRef.current) return;
+    if (!isSpeechAvailable()) {
+      // First-time init: request mic + start recognizer
+      try {
+        await initSpeech(
+          (text: string) => sessionRef.current?.prompt(text),
+          (_text: string) => { /* onStopTalking */ }
+        );
+        enableSpeech();
+        setSpeechPreference(true);
+        setIsSpeechEnabled(true);
+      } catch (e) {
+        console.error('Mic init failed:', e);
+        alert('Could not access microphone. Check your browser permissions.');
+      }
+      return;
+    }
+    const enabled = toggleSpeech();
+    setSpeechPreference(enabled);
+    setIsSpeechEnabled(enabled);
+  }
+
   function _onEndTurn() {
     if (!sessionRef.current || battleOver) return;
     sessionRef.current.endTurn();
@@ -336,6 +448,21 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   function _onReadyClick() {
     sendGameMessage({ type: 'READY' });
     setIAmReady(true);
+  }
+
+  async function _onLobbyMicClick() {
+    const stream = await ensureLocalStream();
+    setMicGranted(stream !== null);
+    if (stream === null) {
+      alert('Could not access microphone. Check your browser permissions.');
+    }
+  }
+
+  function _onSendChat() {
+    const text = chatDraft.trim();
+    if (!text) return;
+    sendChat(text);
+    setChatDraft('');
   }
 
   // Multiplayer lobby/waiting screens (rendered before BattleSession exists)
@@ -391,10 +518,42 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
             })}
           </ul>
         )}
-        <audio ref={_attachRemoteAudio} data-remote-audio autoPlay playsInline />
-        {showReady && (
-          <button className={styles.exitButton} onClick={_onReadyClick}>Ready</button>
-        )}
+        {Object.entries(remoteStreams).map(([id, stream]) => (
+          <RemoteAudio key={id} stream={stream} />
+        ))}
+        <div style={{ display: 'flex', gap: '1vh', marginTop: '1vh' }}>
+          <button className={styles.exitButton} onClick={_onLobbyMicClick}>
+            {micGranted ? '🎙️ Mic On' : '🔇 Enable Mic'}
+          </button>
+          {showReady && (
+            <button className={styles.exitButton} onClick={_onReadyClick}>Ready</button>
+          )}
+        </div>
+        {/* Lobby chat */}
+        <div style={{ width: '90%', maxWidth: '50vh', marginTop: '2vh', background: 'rgba(0,0,0,0.3)', padding: '1vh', borderRadius: '0.5vh' }}>
+          <div style={{ height: '20vh', overflowY: 'auto', fontSize: '1.6vh', color: '#eee' }}>
+            {chatMessages.length === 0 && <div style={{ color: '#777' }}>No messages yet — say hi!</div>}
+            {chatMessages.map((m, i) => (
+              <div key={i} style={{ padding: '0.3vh 0' }}>
+                <strong>{m.username}:</strong> {m.text}
+              </div>
+            ))}
+          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); _onSendChat(); }}
+            style={{ display: 'flex', gap: '0.5vh', marginTop: '0.5vh' }}
+          >
+            <input
+              type="text"
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              placeholder="Type a message…"
+              maxLength={500}
+              style={{ flex: 1, fontSize: '1.6vh', padding: '0.5vh' }}
+            />
+            <button type="submit" style={{ fontSize: '1.6vh', padding: '0.5vh 1vh' }}>Send</button>
+          </form>
+        </div>
         <button className={styles.exitButton} onClick={onExit}>Back to Menu</button>
       </div>
     );
@@ -506,14 +665,26 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         </div>
       )}
 
-      {/* Controls */}
-      <div className={styles.inputArea}>
-        <button className={styles.endTurnButton} onClick={_onEndTurn}>
-          End Turn
-        </button>
-      </div>
+      {/* Controls — hidden for observers */}
+      {mpStage !== 'observing' && (
+        <div className={styles.inputArea}>
+          <button className={styles.endTurnButton} onClick={_onToggleMic} title="Toggle microphone">
+            {isSpeechEnabledState ? '🎙️ Mic On' : '🔇 Mic Off'}
+          </button>
+          <button className={styles.endTurnButton} onClick={_onEndTurn}>
+            End Turn
+          </button>
+        </div>
+      )}
+      {mpStage === 'observing' && (
+        <div className={styles.inputArea}>
+          <span style={{ color: '#aaa', fontSize: '2vh' }}>👀 Watching the performance…</span>
+        </div>
+      )}
 
-      <audio ref={_attachRemoteAudio} data-remote-audio autoPlay playsInline />
+      {Object.entries(remoteStreams).map(([id, stream]) => (
+        <RemoteAudio key={id} stream={stream} />
+      ))}
       <ToastPane />
     </div>
   );

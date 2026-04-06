@@ -83,6 +83,18 @@ export async function connectToGame(gameId: string, playerId: string, onMessage:
   };
 }
 
+export function sendChat(text: string): void {
+  sendGameMessage({ type: 'CHAT', text });
+}
+
+export function sendStateEvent(type: string, payload: any): void {
+  sendGameMessage({ type, ...payload });
+}
+
+export function sendSignalTo(targetId: string, type: 'SDP_OFFER' | 'SDP_ANSWER' | 'ICE_CANDIDATE', payload: any): void {
+  sendGameMessage({ type, targetId, payload });
+}
+
 export function sendGameMessage(msg: any): void {
   if (!_ws || _ws.readyState !== WebSocket.OPEN) {
     console.warn('WebSocket not connected, dropping:', msg.type);

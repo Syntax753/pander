@@ -351,9 +351,37 @@ wss.on('connection', async (ws, req) => {
       case 'SDP_OFFER':
       case 'SDP_ANSWER':
       case 'ICE_CANDIDATE':
-        // WebRTC signaling — relay to the other player
-        relay(gameId, playerId, { type: msg.type, playerId, payload: msg.payload });
+        // WebRTC signaling. If targetId set, deliver only to that peer (mesh).
+        // Otherwise relay to all others (legacy 1:1 fallback).
+        if (msg.targetId) {
+          sendTo(gameId, msg.targetId, { type: msg.type, from: playerId, payload: msg.payload });
+        } else {
+          relay(gameId, playerId, { type: msg.type, from: playerId, payload: msg.payload });
+        }
         break;
+
+      case 'BATTLE_INIT':
+      case 'HAPPINESS_EVENT':
+      case 'DECK_UPDATE':
+      case 'TURN_CHANGED_SYNC':
+      case 'TURN_ENDED_SYNC':
+      case 'BATTLE_END_SYNC':
+        // Performer is broadcasting visual state to observers.
+        relay(gameId, playerId, { ...msg, from: playerId });
+        break;
+
+      case 'CHAT': {
+        const text = (msg.text || '').toString().slice(0, 500);
+        if (!text) break;
+        broadcast(gameId, {
+          type: 'CHAT',
+          from: playerId,
+          username: game.players[playerId]?.username || 'unknown',
+          text,
+          timestamp: Date.now(),
+        });
+        break;
+      }
 
       default:
         break;
@@ -373,6 +401,14 @@ function broadcast(gameId, msg) {
   const data = JSON.stringify(msg);
   for (const ws of conns) {
     if (ws.readyState === 1) ws.send(data);
+  }
+}
+
+function sendTo(gameId, targetPlayerId, msg) {
+  const conns = gameConnections.get(gameId) || [];
+  const data = JSON.stringify(msg);
+  for (const ws of conns) {
+    if (ws.readyState === 1 && ws.playerId === targetPlayerId) ws.send(data);
   }
 }
 
