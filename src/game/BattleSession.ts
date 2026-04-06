@@ -42,7 +42,7 @@ class BattleSession {
   private _totalTurns: number = ROUNDS_PER_PLAYER * 2;
   private _turnTimer: ReturnType<typeof setTimeout> | null = null;
   private _isBattleOver: boolean = false;
-  private _singleTurnMode: boolean = false;
+  private _singlePlayerMode: boolean = false;
 
   constructor(
     onSetHappiness: SetHappinessCallback,
@@ -67,8 +67,10 @@ class BattleSession {
   get averageHappiness(): number { return this._averageHappiness; }
   get isBattleOver(): boolean { return this._isBattleOver; }
 
-  setSingleTurnMode() {
-    this._singleTurnMode = true;
+  /** Single-player mode: the active player plays through the entire deck without alternating turns. */
+  setSinglePlayerMode(activePlayerIndex: number = 0) {
+    this._singlePlayerMode = true;
+    this._activePlayerIndex = activePlayerIndex;
   }
 
   async startBattle(levelId: string, player1Name: string, player2Name: string): Promise<Level> {
@@ -82,9 +84,11 @@ class BattleSession {
     this._averageHappiness = calcAverageHappiness(this._audienceMembers);
     this._wordUsageHistory = {};
     this._deck = await createDeckForLevel(level);
-    this._totalTurns = this._singleTurnMode ? 1 : Math.min(ROUNDS_PER_PLAYER * 2, this._deck.cards.length);
+    this._totalTurns = this._singlePlayerMode
+      ? this._deck.cards.length
+      : Math.min(ROUNDS_PER_PLAYER * 2, this._deck.cards.length);
     this._turnNumber = 0;
-    this._activePlayerIndex = 0;
+    if (!this._singlePlayerMode) this._activePlayerIndex = 0;
     this._isBattleOver = false;
 
     this._onDeckChanged(this._deck);
@@ -158,7 +162,9 @@ class BattleSession {
     // Advance to next card and switch player
     this._deck = duplicateDeck(this._deck);
     this._deck.activeCardNo++;
-    this._activePlayerIndex = this._activePlayerIndex === 0 ? 1 : 0;
+    if (!this._singlePlayerMode) {
+      this._activePlayerIndex = this._activePlayerIndex === 0 ? 1 : 0;
+    }
     this._startTurn();
   }
 

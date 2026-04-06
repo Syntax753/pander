@@ -5,12 +5,6 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
-const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
-  width: { ideal: 320 },
-  height: { ideal: 240 },
-  frameRate: { ideal: 15 },
-};
-
 const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: true,
   noiseSuppression: true,
@@ -60,14 +54,17 @@ export async function initPeerConnection(callbacks: PeerCallbacks): Promise<void
     }
   };
 
-  // Get local media
-  _localStream = await navigator.mediaDevices.getUserMedia({
-    audio: AUDIO_CONSTRAINTS,
-    video: VIDEO_CONSTRAINTS,
-  });
-
-  for (const track of _localStream.getTracks()) {
-    _peerConnection.addTrack(track, _localStream);
+  // Get local audio (video deferred — audio-only for now)
+  try {
+    _localStream = await navigator.mediaDevices.getUserMedia({
+      audio: AUDIO_CONSTRAINTS,
+      video: false,
+    });
+    for (const track of _localStream.getTracks()) {
+      _peerConnection.addTrack(track, _localStream);
+    }
+  } catch (e) {
+    console.warn('Could not get local audio — continuing without mic:', e);
   }
 }
 

@@ -58,12 +58,6 @@ function App() {
       setScreen(storedPlayer ? 'menu' : 'login');
     }
     _checkAuth();
-
-    function _onSkipLogin() {
-      setScreen('menu');
-    }
-    window.addEventListener('skip-login', _onSkipLogin);
-    return () => window.removeEventListener('skip-login', _onSkipLogin);
   }, []);
 
   function _onSoloPlay() {

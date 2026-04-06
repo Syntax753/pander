@@ -1,7 +1,13 @@
 import { CrowdComposition } from "./types/Challenge";
+import { getAccessToken } from "./discordAuth";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3100';
 const WS_URL = SERVER_URL.replace(/^http/, 'ws');
+
+async function _authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 type MessageHandler = (msg: any) => void;
 
@@ -20,7 +26,7 @@ export async function createChallenge(
 ): Promise<{ gameId: string; joinLink: string }> {
   const res = await fetch(`${SERVER_URL}/api/challenge`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await _authHeaders()) },
     body: JSON.stringify({ challengerId, challengerName, defenderId, defenderName, crowdComposition, levelId }),
   });
   if (!res.ok) throw Error(`Challenge failed: ${res.status}`);
@@ -28,7 +34,9 @@ export async function createChallenge(
 }
 
 export async function getGame(gameId: string): Promise<any> {
-  const res = await fetch(`${SERVER_URL}/api/game/${gameId}`);
+  const res = await fetch(`${SERVER_URL}/api/game/${gameId}`, {
+    headers: await _authHeaders(),
+  });
   if (!res.ok) throw Error(`Game not found: ${res.status}`);
   return res.json();
 }
@@ -36,7 +44,7 @@ export async function getGame(gameId: string): Promise<any> {
 export async function submitScore(gameId: string, playerId: string, score: number): Promise<{ scores: Record<string, number>; status: string }> {
   const res = await fetch(`${SERVER_URL}/api/game/${gameId}/score`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await _authHeaders()) },
     body: JSON.stringify({ playerId, score }),
   });
   if (!res.ok) throw Error(`Score submit failed: ${res.status}`);
@@ -44,7 +52,9 @@ export async function submitScore(gameId: string, playerId: string, score: numbe
 }
 
 export async function getPlayerGames(playerId: string): Promise<any[]> {
-  const res = await fetch(`${SERVER_URL}/api/games?playerId=${playerId}`);
+  const res = await fetch(`${SERVER_URL}/api/games?playerId=${playerId}`, {
+    headers: await _authHeaders(),
+  });
   if (!res.ok) return [];
   return res.json();
 }

@@ -164,8 +164,9 @@ wss.on('connection', (ws, req) => {
   const conns = gameConnections.get(gameId);
   conns.push(ws);
 
-  // Track player
-  game.players[playerId] = { connected: true, score: 0 };
+  // Track player (preserve ready state if reconnecting)
+  const existing = game.players[playerId] || {};
+  game.players[playerId] = { connected: true, score: existing.score || 0, ready: existing.ready || false };
 
   ws.gameId = gameId;
   ws.playerId = playerId;
@@ -188,8 +189,22 @@ wss.on('connection', (ws, req) => {
 
     switch (msg.type) {
       case 'READY':
-        // Challenger clicked Ready — start battle, challenger plays first
-        if (playerId === game.challengerId && game.status === 'waiting') {
+        // Mark this player ready and broadcast updated ready state
+        if (game.players[playerId]) {
+          game.players[playerId].ready = true;
+        }
+        broadcast(gameId, {
+          type: 'READY_STATE',
+          ready: Object.fromEntries(
+            Object.entries(game.players).map(([id, p]) => [id, !!p.ready])
+          ),
+        });
+        // If both players are ready, start the battle (challenger plays first)
+        if (
+          game.status === 'waiting' &&
+          game.players[game.challengerId]?.ready &&
+          game.players[game.defenderId]?.ready
+        ) {
           game.status = 'active';
           broadcast(gameId, { type: 'BATTLE_START', firstPlayerId: game.challengerId });
         }

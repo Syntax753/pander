@@ -17,6 +17,14 @@ import { getSpeechPreference } from "@/common/speechPreference";
 import ToastPane from "@/components/toasts/ToastPane";
 import { CrowdComposition } from "@/multiplayer/types/Challenge";
 import { submitScore, connectToGame, sendGameMessage, disconnectFromGame } from "@/multiplayer/gameClient";
+import {
+  initPeerConnection,
+  createOffer,
+  handleOffer,
+  handleAnswer,
+  addIceCandidate,
+  closePeerConnection,
+} from "@/multiplayer/peerConnection";
 
 type MpStage = 'lobby_waiting' | 'lobby_ready' | 'my_turn' | 'opponent_turn' | 'finished';
 
@@ -85,6 +93,15 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   const [isReady, setIsReady] = useState<boolean>(false);
   const [mpStage, setMpStage] = useState<MpStage>(isMultiplayer ? 'lobby_waiting' : 'my_turn');
   const [opponentFinishedScore, setOpponentFinishedScore] = useState<number | null>(opponentScore ?? null);
+  const [iAmReady, setIAmReady] = useState<boolean>(false);
+  const [opponentReady, setOpponentReady] = useState<boolean>(false);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const _attachRemoteAudio = useCallback((el: HTMLAudioElement | null) => {
+    if (el && remoteStreamRef.current) {
+      el.srcObject = remoteStreamRef.current;
+      el.play().catch(() => { /* requires user gesture */ });
+    }
+  }, []);
 
   const sessionRef = useRef<BattleSession | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -159,7 +176,8 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     sessionRef.current = session;
 
     if (isMultiplayer) {
-      session.setSingleTurnMode();
+      // Each player plays through the entire deck on their own turn.
+      session.setSinglePlayerMode(isChallenger ? 0 : 1);
     }
 
     const level = await session.startBattle(levelId, player1Name, player2Name);
@@ -174,7 +192,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
       enableSpeech();
       setIsSpeechEnabled(true);
     }
-  }, [isMultiplayer, levelId, player1Name, player2Name, onTurnEnd, onBattleEnd, onTurnChanged]);
+  }, [isMultiplayer, isChallenger, levelId, player1Name, player2Name, onTurnEnd, onBattleEnd, onTurnChanged]);
 
   // Solo play — start immediately. Multiplayer waits for lobby/turn coordination.
   useEffect(() => {
@@ -191,6 +209,40 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
   useEffect(() => {
     if (!isMultiplayer || !gameId || !playerId) return;
 
+    let peerInitialized = false;
+
+    async function _ensurePeerConnection() {
+      if (peerInitialized) return;
+      peerInitialized = true;
+      try {
+        await initPeerConnection({
+          onRemoteStream: (stream) => {
+            remoteStreamRef.current = stream;
+            // If an <audio> element is currently mounted, attach immediately.
+            const el = document.querySelector<HTMLAudioElement>('audio[data-remote-audio]');
+            if (el) {
+              el.srcObject = stream;
+              el.play().catch(() => { /* requires user gesture */ });
+            }
+          },
+          onDataMessage: () => { /* unused — WS handles game messages */ },
+          onIceCandidate: (candidate) => {
+            sendGameMessage({ type: 'ICE_CANDIDATE', payload: candidate.toJSON() });
+          },
+          onConnectionStateChange: (state) => {
+            console.log('[peer] connection state:', state);
+          },
+        });
+        // Challenger initiates the offer once peer ready
+        if (isChallenger) {
+          const offer = await createOffer();
+          sendGameMessage({ type: 'SDP_OFFER', payload: offer });
+        }
+      } catch (e) {
+        console.error('Peer connection init failed:', e);
+      }
+    }
+
     connectToGame(gameId, playerId, (msg) => {
       switch (msg.type) {
         case 'GAME_STATE':
@@ -199,6 +251,25 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
           break;
         case 'LOBBY_READY':
           setMpStage((cur) => (cur === 'lobby_waiting' ? 'lobby_ready' : cur));
+          _ensurePeerConnection();
+          break;
+        case 'READY_STATE':
+          if (msg.ready) {
+            setIAmReady(!!msg.ready[playerId]);
+            const otherId = Object.keys(msg.ready).find(id => id !== playerId);
+            if (otherId) setOpponentReady(!!msg.ready[otherId]);
+          }
+          break;
+        case 'SDP_OFFER':
+          handleOffer(msg.payload).then((answer) => {
+            sendGameMessage({ type: 'SDP_ANSWER', payload: answer });
+          }).catch(err => console.error('handleOffer failed:', err));
+          break;
+        case 'SDP_ANSWER':
+          handleAnswer(msg.payload).catch(err => console.error('handleAnswer failed:', err));
+          break;
+        case 'ICE_CANDIDATE':
+          addIceCandidate(msg.payload).catch(err => console.error('addIceCandidate failed:', err));
           break;
         case 'BATTLE_START':
           // Challenger plays first
@@ -232,6 +303,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
 
     return () => {
       disconnectFromGame();
+      closePeerConnection();
     };
   }, [isMultiplayer, gameId, playerId, isChallenger, startBattleSession]);
 
@@ -260,6 +332,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
 
   function _onReadyClick() {
     sendGameMessage({ type: 'READY' });
+    setIAmReady(true);
   }
 
   // Multiplayer lobby/waiting screens (rendered before BattleSession exists)
@@ -273,14 +346,11 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         ? `Waiting for ${player2Name} to join.`
         : `Connecting to ${player2Name}…`;
     } else if (mpStage === 'lobby_ready') {
-      if (isChallenger) {
-        title = `${player2Name} is here!`;
-        subtitle = 'Click Ready to start the battle. You play first.';
-        showReady = true;
-      } else {
-        title = `Waiting for ${player2Name} to start…`;
-        subtitle = 'Challenger plays first.';
-      }
+      title = 'Both players connected!';
+      const youLabel = iAmReady ? '✓ You are ready' : '✗ You — click Ready';
+      const themLabel = opponentReady ? `✓ ${player2Name} is ready` : `✗ ${player2Name} not ready`;
+      subtitle = `${youLabel}\n${themLabel}\n${isChallenger ? 'You play first.' : `${player2Name} plays first.`}`;
+      showReady = !iAmReady;
     } else if (mpStage === 'opponent_turn') {
       // Either we just finished and are waiting for opponent, or we haven't played yet
       if (scoreSubmitted) {
@@ -294,7 +364,8 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
     return (
       <div className={styles.gameOver}>
         <h2 className={styles.gameOverTitle}>{title}</h2>
-        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '2vh' }}>{subtitle}</p>
+        <p style={{ color: '#ccc', fontSize: '2vh', textAlign: 'center', marginTop: '2vh', whiteSpace: 'pre-line' }}>{subtitle}</p>
+        <audio ref={_attachRemoteAudio} data-remote-audio autoPlay playsInline />
         {showReady && (
           <button className={styles.exitButton} onClick={_onReadyClick}>Ready</button>
         )}
@@ -416,6 +487,7 @@ function BattleScreen({ player1Name, player2Name, levelId, gameId, playerId, isC
         </button>
       </div>
 
+      <audio ref={_attachRemoteAudio} data-remote-audio autoPlay playsInline />
       <ToastPane />
     </div>
   );
